@@ -16,31 +16,21 @@
  */
 
 #pragma once
+#include "../../src/types.h"
+#include "../PyHelper.h"
 
 namespace script {
 
-namespace template_backend {
-
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
-};
-
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
-};
-
-}  // namespace template_backend
+struct py_interop;
 
 template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
+struct internal::ImplType<StringHolder> {
+  using type = PyObject*;
 };
 
 template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
+struct internal::ImplType<internal::interop> {
+  using type = py_interop;
 };
 
 }  // namespace script

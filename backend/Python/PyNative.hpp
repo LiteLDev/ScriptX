@@ -17,30 +17,30 @@
 
 #pragma once
 
+#include "../../src/Native.h"
+#include "PyEngine.h"
+
 namespace script {
 
-namespace template_backend {
+template <typename T>
+ScriptClass::ScriptClass(const ScriptClass::ConstructFromCpp<T>) : internalState_() {
+  auto engine = py_backend::currentEngineChecked();
+  internalState_.scriptEngine_ = engine;
 
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
-};
+  // pass "this" through into tp_init by wrapped in a capsule
+  PyCapsule_Destructor destructor = [](PyObject* cap) {};
+  PyObject* capsule =
+      PyCapsule_New(this, nullptr, destructor);
 
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
-};
+  auto ref = engine->newNativeClass<T>({py_interop::asLocal<Value>(capsule)});
+  internalState_.weakRef_ = ref;
 
-}  // namespace template_backend
+  py_backend::extendLifeTimeToNextLoop(engine, py_interop::getPy(ref.asValue()));
+}
 
-template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
-};
-
-template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
-};
+template <typename T>
+T* Arguments::engineAs() const {
+  return static_cast<T*>(engine());
+}
 
 }  // namespace script

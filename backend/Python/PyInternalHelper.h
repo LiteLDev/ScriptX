@@ -16,31 +16,19 @@
  */
 
 #pragma once
+#include "../../src/foundation.h"
 
-namespace script {
+SCRIPTX_BEGIN_INCLUDE_LIBRARY
+#include <pystate.h>
+SCRIPTX_END_INCLUDE_LIBRARY
 
-namespace template_backend {
+// =========================================
+// - Attention! Functions and definitions below is copied from CPython source code so they 
+//  may need to be re-adapted as the CPython backend's version is updated.
+// - These function and definitions are not exported. We can only copy the implementation.
 
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
-};
+extern "C" void _PyThreadState_DeleteExcept(/*_PyRuntimeState *runtime, */ PyThreadState *tstate);
 
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
-};
+// =========================================
 
-}  // namespace template_backend
-
-template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
-};
-
-template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
-};
-
-}  // namespace script
+extern "C" void SetPyInterpreterStateFinalizing(PyInterpreterState *is);

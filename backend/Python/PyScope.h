@@ -16,31 +16,42 @@
  */
 
 #pragma once
+#include "../../src/Reference.h"
 
-namespace script {
+namespace script::py_backend {
 
-namespace template_backend {
+class PyEngine;
 
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
+class EngineScopeImpl {
+  // Previous thread state
+  PyThreadState* prevThreadState;
+
+ public:
+  explicit EngineScopeImpl(PyEngine &, PyEngine *);
+
+  ~EngineScopeImpl();
 };
 
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
+class ExitEngineScopeImpl {
+  // Entered thread state
+  PyThreadState* enteredThreadState;
+  // Entered engine
+  PyEngine* enteredEngine;
+
+ public:
+  explicit ExitEngineScopeImpl(PyEngine &);
+
+  ~ExitEngineScopeImpl();
 };
 
-}  // namespace template_backend
+class StackFrameScopeImpl {
+ public:
+  explicit StackFrameScopeImpl(PyEngine &) {}
 
-template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
+  template <typename T>
+  Local<T> returnValue(const Local<T> &localRef) {
+    // create a new ref for localRef
+    return Local<T>(localRef);
+  }
 };
-
-template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
-};
-
-}  // namespace script
+}  // namespace script::py_backend

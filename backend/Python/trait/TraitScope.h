@@ -17,30 +17,24 @@
 
 #pragma once
 
+#include "../PyScope.h"
+#include "TraitEngine.h"
+
 namespace script {
 
-namespace template_backend {
-
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
-};
-
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
-};
-
-}  // namespace template_backend
-
 template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
+struct internal::ImplType<EngineScope> {
+  using type = py_backend::EngineScopeImpl;
 };
 
 template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
+struct internal::ImplType<ExitEngineScope> {
+  using type = py_backend::ExitEngineScopeImpl;
+};
+
+template <>
+struct internal::ImplType<StackFrameScope> {
+  using type = py_backend::StackFrameScopeImpl;
 };
 
 }  // namespace script

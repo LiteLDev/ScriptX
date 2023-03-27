@@ -15,32 +15,24 @@
  * limitations under the License.
  */
 
-#pragma once
+# pragma once
 
-namespace script {
+#include <string>
+#include <vector>
 
-namespace template_backend {
+namespace script::py_backend {
+namespace py_runtime_settings {
 
-struct ArgumentsData {
-  int stackBase;
-  size_t size;
-};
+void initDefaultPythonRuntimeSettings();
 
-struct ScriptClassState {
-  ScriptEngine* scriptEngine_ = nullptr;
-  Weak<Object> weakRef_;
-};
+void setPythonHomePath(const std::wstring &path);
+std::wstring getPythonHomePath();
 
-}  // namespace template_backend
+void setModuleSearchPaths(const std::vector<std::wstring> &paths);
+void addModuleSearchPath(const std::wstring &path);
+std::vector<std::wstring> getModuleSearchPaths();
 
-template <>
-struct internal::ImplType<::script::Arguments> {
-  using type = template_backend::ArgumentsData;
-};
+std::wstring getPlatformPathSeparator();
 
-template <>
-struct internal::ImplType<::script::ScriptClass> {
-  using type = template_backend::ScriptClassState;
-};
-
-}  // namespace script
+}
+}
