@@ -48,3 +48,8 @@ cmake-build-*
 # js
 node_modules
 .yarn-meta
+
+# XMake
+/.xmake/
+/build/
+/CMakeLists.txt
