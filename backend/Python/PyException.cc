@@ -16,24 +16,23 @@
  */
 
 #include <ScriptX/ScriptX.h>
-#include "PyHelper.h"
 #include "PyEngine.h"
+#include "PyHelper.h"
+
 
 namespace script {
 
 namespace py_backend {
 
 std::string ExceptionFields::getMessage() const noexcept {
-  if(hasMessage_)
-    return message_;
-  
-  Local<Value> obj = exceptionObj_.get();
-  PyObject* exceptionObj = py_interop::peekPy(obj);
+  if (hasMessage_) return message_;
 
-  PyObject *argsData = py_backend::getAttr(exceptionObj, "args");     // borrowed
-  if(!PyTuple_Check(argsData) || PyTuple_Size(argsData) == 0)
-    return "[No Exception Message]";
-  PyObject *msg = PyTuple_GetItem(argsData, 0);     // borrowed
+  Local<Value> obj = exceptionObj_.get();
+  PyObject *exceptionObj = py_interop::peekPy(obj);
+
+  PyObject *argsData = py_backend::getAttr(exceptionObj, "args");  // borrowed
+  if (!PyTuple_Check(argsData) || PyTuple_Size(argsData) == 0) return "[No Exception Message]";
+  PyObject *msg = PyTuple_GetItem(argsData, 0);  // borrowed
 
   message_ = py_backend::fromStr(msg);
   hasMessage_ = true;
@@ -41,14 +40,13 @@ std::string ExceptionFields::getMessage() const noexcept {
 }
 
 std::string ExceptionFields::getStacktrace() const noexcept {
-  if(hasStacktrace_)
-    return stacktrace_;
+  if (hasStacktrace_) return stacktrace_;
 
   Local<Value> obj = exceptionObj_.get();
-  PyObject* exceptionObj = py_interop::peekPy(obj);
+  PyObject *exceptionObj = py_interop::peekPy(obj);
 
-  PyTracebackObject* pStacktrace = (PyTracebackObject*)PyException_GetTraceback(exceptionObj);
-  if(pStacktrace == nullptr || pStacktrace == (PyTracebackObject*)Py_None)
+  PyTracebackObject *pStacktrace = (PyTracebackObject *)PyException_GetTraceback(exceptionObj);
+  if (pStacktrace == nullptr || pStacktrace == (PyTracebackObject *)Py_None)
     return "[No Stacktrace]";
 
   // Get the deepest trace possible.
@@ -56,7 +54,7 @@ std::string ExceptionFields::getStacktrace() const noexcept {
     pStacktrace = pStacktrace->tb_next;
   }
   PyFrameObject *frame = pStacktrace->tb_frame;
-  Py_XINCREF(frame);    // TODO: why incref here?
+  Py_XINCREF(frame);  // TODO: why incref here?
   stacktrace_ = "Traceback (most recent call last):";
   while (frame) {
     stacktrace_ += '\n';
@@ -68,7 +66,7 @@ std::string ExceptionFields::getStacktrace() const noexcept {
     stacktrace_ += std::to_string(lineno);
     stacktrace_ += ", in ";
     stacktrace_ += PyUnicode_AsUTF8(f_code->co_name);
-    Py_DECREF(f_code);    // TODO: why decref here?
+    Py_DECREF(f_code);  // TODO: why decref here?
     frame = frame->f_back;
   }
   hasStacktrace_ = true;
@@ -77,14 +75,14 @@ std::string ExceptionFields::getStacktrace() const noexcept {
 
 }  // namespace py_backend
 
-Exception::Exception(std::string msg) :std::exception(), exception_() {
+Exception::Exception(std::string msg) : std::exception(), exception_() {
   exception_.exceptionObj_ = py_interop::asLocal<Value>(py_backend::newExceptionInstance(msg));
 }
 
 Exception::Exception(const script::Local<script::String> &message)
     : std::exception(), exception_() {
-  exception_.exceptionObj_ = 
-    py_interop::asLocal<Value>(py_backend::newExceptionInstance(message.toString()));
+  exception_.exceptionObj_ =
+      py_interop::asLocal<Value>(py_backend::newExceptionInstance(message.toString()));
 }
 
 Exception::Exception(const script::Local<script::Value> &exception)
@@ -92,17 +90,11 @@ Exception::Exception(const script::Local<script::Value> &exception)
   exception_.exceptionObj_ = exception;
 }
 
-Local<Value> Exception::exception() const {
-  return exception_.exceptionObj_.get();
-}
+Local<Value> Exception::exception() const { return exception_.exceptionObj_.get(); }
 
-std::string Exception::message() const noexcept {
-  return exception_.getMessage();
-}
+std::string Exception::message() const noexcept { return exception_.getMessage(); }
 
-std::string Exception::stacktrace() const noexcept {
-  return exception_.getStacktrace();
-}
+std::string Exception::stacktrace() const noexcept { return exception_.getStacktrace(); }
 
 const char *Exception::what() const noexcept {
   exception_.getMessage();
