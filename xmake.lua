@@ -53,7 +53,8 @@ target("ScriptX")
             "SCRIPTX_BACKEND_TRAIT_PREFIX=../backend/Python/trait/Trait"
         )
         add_files(
-            "backend/Python/**.cc"
+            "backend/Python/**.cc",
+            "backend/Python/**.c"
         )
         add_packages(
             "python"
