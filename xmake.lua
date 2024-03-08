@@ -4,10 +4,11 @@ add_repositories("liteldev-repo https://github.com/LiteLDev/xmake-repo.git")
 add_requires("lua v5.4.6", {configs={shared=true}})
 add_requires("quickjs 2022-03-07", {configs={shared=true}})
 add_requires("python 3.10.11", {configs={shared=true}})
+add_requires("node v16.16.0", {configs={shared=true}})
 
 option("backend")
     set_default("Lua")
-    set_values("Lua", "QuickJs", "Python")
+    set_values("Lua", "QuickJs", "Python", "NodeJs")
 
 target("ScriptX")
     add_files(
@@ -58,6 +59,18 @@ target("ScriptX")
         )
         add_packages(
             "python"
+        )
+
+    elseif is_config("backend", "NodeJs") then
+        add_defines(
+            "SCRIPTX_BACKEND_V8",
+            "SCRIPTX_BACKEND_TRAIT_PREFIX=../backend/V8/trait/Trait"
+        )
+        add_files(
+            "backend/V8/**.cc"
+        )
+        add_packages(
+            "node"
         )
 
     end
