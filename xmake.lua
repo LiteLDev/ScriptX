@@ -8,7 +8,7 @@ add_requires("node v16.16.0", {configs={shared=true}})
 
 option("backend")
     set_default("Lua")
-    set_values("Lua", "QuickJs", "Python", "NodeJs")
+    set_values("Lua", "QuickJs", "Python", "V8")
 
 target("ScriptX")
     add_files(
@@ -61,7 +61,7 @@ target("ScriptX")
             "python"
         )
 
-    elseif is_config("backend", "NodeJs") then
+    elseif is_config("backend", "V8") then
         add_defines(
             "SCRIPTX_BACKEND_V8",
             "SCRIPTX_BACKEND_TRAIT_PREFIX=../backend/V8/trait/Trait"
