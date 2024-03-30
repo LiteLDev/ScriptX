@@ -44,9 +44,9 @@ PyEngine::PyEngine(std::shared_ptr<utils::MessageQueue> queue)
     PyPreConfig preConfig ;
     PyPreConfig_InitPythonConfig(&preConfig);
     PyStatus status =  Py_PreInitialize(&preConfig);
-    if (PyStatus_Exception(status)) {
-      Py_ExitStatusException(status);
-    }
+    // if (PyStatus_Exception(status)) {
+    //   Py_ExitStatusException(status);
+    // }
     
     // Init main interpreter
     Py_InitializeEx(0);
