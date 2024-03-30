@@ -42,7 +42,7 @@ PyEngine::PyEngine(std::shared_ptr<utils::MessageQueue> queue)
 
     // Pre-initialize and set isolated environment
     PyPreConfig preConfig ;
-    PyPreConfig_InitIsolatedConfig(&preConfig);
+    PyPreConfig_InitPythonConfig(&preConfig);
     PyStatus status =  Py_PreInitialize(&preConfig);
     if (PyStatus_Exception(status)) {
       Py_ExitStatusException(status);
