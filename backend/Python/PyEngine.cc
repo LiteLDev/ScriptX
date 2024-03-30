@@ -40,6 +40,14 @@ PyEngine::PyEngine(std::shared_ptr<utils::MessageQueue> queue)
     Py_SetStandardStreamEncoding("utf-8", nullptr);
     py_runtime_settings::initDefaultPythonRuntimeSettings();
 
+    // Pre-initialize and set isolated environment
+    PyPreConfig preConfig ;
+    PyPreConfig_InitIsolatedConfig(&preConfig);
+    PyStatus status =  Py_PreInitialize(&preConfig);
+    if (PyStatus_Exception(status)) {
+      Py_ExitStatusException(status);
+    }
+    
     // Init main interpreter
     Py_InitializeEx(0);
     // Init threading environment
