@@ -97,14 +97,14 @@ QjsEngine::QjsEngine(std::shared_ptr<utils::MessageQueue> queue, const QjsFactor
   initEngineResource();
 
   /* set default loader for ES6 modules */
-  JS_SetModuleLoaderFunc(runtime_, NULL, js_module_loader, NULL);  
+  JS_SetModuleLoaderFunc(runtime_, NULL, js_module_loader, NULL);
 }
 
 void QjsEngine::initEngineResource() {
-  std::call_once(kGlobalQjsClass, []() {
-    JS_NewClassID(&kPointerClassId);
-    JS_NewClassID(&kInstanceClassId);
-    JS_NewClassID(&kFunctionDataClassId);
+  std::call_once(kGlobalQjsClass, [this]() {
+    JS_NewClassID(runtime_, &kPointerClassId);
+    JS_NewClassID(runtime_, &kInstanceClassId);
+    JS_NewClassID(runtime_, &kFunctionDataClassId);
   });
 
   JSClassDef pointer{};
@@ -274,29 +274,25 @@ Local<Value> QjsEngine::eval(const Local<String>& script, const Local<Value>& so
 
 Local<Value> QjsEngine::loadFile(const Local<String>& scriptFile) {
   Tracer trace(this, "QjsEngine::loadFile");
-  if(scriptFile.toString().empty())
-    throw Exception("script file no found");
+  if (scriptFile.toString().empty()) throw Exception("script file no found");
   Local<Value> content = internal::readAllFileContent(scriptFile);
-  if(content.isNull())
-    throw Exception("can't load script file");
+  if (content.isNull()) throw Exception("can't load script file");
 
   std::string sourceFilePath = scriptFile.toString();
   std::size_t pathSymbol = sourceFilePath.rfind("/");
-  if(pathSymbol != std::string::npos)
+  if (pathSymbol != std::string::npos)
     sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
-  else
-  {
+  else {
     pathSymbol = sourceFilePath.rfind("\\");
-    if(pathSymbol != std::string::npos)
-      sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
+    if (pathSymbol != std::string::npos) sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
   }
   Local<String> sourceFileName = String::newString(sourceFilePath);
 
   StringHolder contentStr(content.asString());
   StringHolder fileNameStr(sourceFileName);
   JSValue ret = JS_Eval(context_, contentStr.c_str(), contentStr.length(), fileNameStr.c_str(),
-      JS_EVAL_TYPE_MODULE);
-    
+                        JS_EVAL_TYPE_MODULE);
+
   qjs_backend::checkException(ret);
   scheduleTick();
 

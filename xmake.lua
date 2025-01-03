@@ -6,7 +6,7 @@ if is_config("backend", "Lua") then
     add_requires("lua v5.4.7", {configs={shared=true}})
 
 elseif is_config("backend", "QuickJs") then
-    add_requires("quickjs 2024.01.13", {configs={shared=true}})
+    add_requires("quickjs-ng v0.8.0", {configs={shared=true, libc=true}})
 
 elseif is_config("backend", "Python") then
     add_requires("python 3.10.11", {configs={shared=true}})
@@ -55,7 +55,7 @@ target("ScriptX")
             "backend/QuickJs/**.cc"
         )
         add_packages(
-            "quickjs"
+            "quickjs-ng"
         )
 
     elseif is_config("backend", "Python") then
