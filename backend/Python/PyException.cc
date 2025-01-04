@@ -16,6 +16,7 @@
  */
 
 #include <ScriptX/ScriptX.h>
+#include <internal/pycore_frame.h>
 #include "PyEngine.h"
 #include "PyHelper.h"
 

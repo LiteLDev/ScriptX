@@ -27,9 +27,11 @@
 // https://docs.python.org/3.8/c-api/init.html#thread-state-and-the-global-interpreter-lock
 
 SCRIPTX_BEGIN_INCLUDE_LIBRARY
+
 #include <Python.h>
 #include <frameobject.h>
 #include <structmember.h>
+
 SCRIPTX_END_INCLUDE_LIBRARY
 
 #if PY_VERSION_HEX < 0x030a00f0
@@ -38,18 +40,18 @@ SCRIPTX_END_INCLUDE_LIBRARY
 
 namespace script {
 
-namespace py_backend {
+    namespace py_backend {
 
-struct GeneralObject : PyObject {
-  void* instance;
-  PyObject* weakrefs;
-  PyObject* instanceDict;
+        struct GeneralObject : PyObject {
+            void *instance;
+            PyObject *weakrefs;
+            PyObject *instanceDict;
 
-  template <typename T>
-  static T* getInstance(PyObject* self) {
-    return reinterpret_cast<T*>(reinterpret_cast<GeneralObject*>(self)->instance);
-  }
-};
+            template<typename T>
+            static T *getInstance(PyObject *self) {
+                return reinterpret_cast<T *>(reinterpret_cast<GeneralObject *>(self)->instance);
+            }
+        };
 
 //
 // - Locker Helper:
@@ -67,70 +69,93 @@ struct GeneralObject : PyObject {
 //   5. Read more docs about locker usage in "PyScope.cc"
 //
 
-class PyEngine;
-class EngineLockerHelper {
-private:
-  PyEngine* engine;
-  inline static std::recursive_mutex engineLocker;
-  inline static int allPyEnginesEnterCount = 0;
+        class PyEngine;
 
-public:
-  EngineLockerHelper(PyEngine* currentEngine);
-  ~EngineLockerHelper();
+        class EngineLockerHelper {
+        private:
+            PyEngine *engine;
+            inline static std::recursive_mutex engineLocker;
+            inline static int allPyEnginesEnterCount = 0;
 
-  // May wait on lock. After this the GIL must be held.
-  void waitToEnterEngine();       
-  void finishEngineSwitch();
+        public:
+            EngineLockerHelper(PyEngine *currentEngine);
 
-  // May wait on lock.
-  void waitToExitEngine();
-  // After this the GIL maybe released.
-  void finishExitEngine();
+            ~EngineLockerHelper();
 
-  // May wait on lock
-  void startDestroyEngine();      
-  void endDestroyEngine();
-};
+            // May wait on lock. After this the GIL must be held.
+            void waitToEnterEngine();
 
-// key +1 value +1
-void setAttr(PyObject* obj, PyObject* key, PyObject* value);
-// value +1
-void setAttr(PyObject* obj, const char* key, PyObject* value);
-PyObject* getAttr(PyObject* obj, PyObject* key);
-PyObject* getAttr(PyObject* obj, const char* key);
-bool hasAttr(PyObject* obj, PyObject* key);
-bool hasAttr(PyObject* obj, const char* key);
-void delAttr(PyObject* obj, PyObject* key);
-void delAttr(PyObject* obj, const char* key);
+            void finishEngineSwitch();
+
+            // May wait on lock.
+            void waitToExitEngine();
+
+            // After this the GIL maybe released.
+            void finishExitEngine();
+
+            // May wait on lock
+            void startDestroyEngine();
+
+            void endDestroyEngine();
+        };
 
 // key +1 value +1
-void setDictItem(PyObject* obj, PyObject* key, PyObject* value);
+        void setAttr(PyObject *obj, PyObject *key, PyObject *value);
+
 // value +1
-void setDictItem(PyObject* obj, const char* key, PyObject* value);
-PyObject* getDictItem(PyObject* obj, PyObject* key);
-PyObject* getDictItem(PyObject* obj, const char* key);
+        void setAttr(PyObject *obj, const char *key, PyObject *value);
 
-PyObject* toStr(const char* s);
-PyObject* toStr(const std::string& s);
-std::string fromStr(PyObject* s);
+        PyObject *getAttr(PyObject *obj, PyObject *key);
 
-class PyEngine;
+        PyObject *getAttr(PyObject *obj, const char *key);
 
-PyObject* newCustomInstance(PyTypeObject* pType, PyObject* argsTuple, PyObject* kwds = nullptr);
-PyObject* newExceptionInstance(PyTypeObject *pType, PyObject* pValue, PyObject* pTraceback);
-PyObject* newExceptionInstance(std::string msg);
-void checkAndThrowException();
-bool checkAndClearException();
-PyObject* checkAndGetException();   // return new ref
-PyEngine* currentEngine();
-PyEngine* currentEngineChecked();
+        bool hasAttr(PyObject *obj, PyObject *key);
+
+        bool hasAttr(PyObject *obj, const char *key);
+
+        void delAttr(PyObject *obj, PyObject *key);
+
+        void delAttr(PyObject *obj, const char *key);
+
+// key +1 value +1
+        void setDictItem(PyObject *obj, PyObject *key, PyObject *value);
+
+// value +1
+        void setDictItem(PyObject *obj, const char *key, PyObject *value);
+
+        PyObject *getDictItem(PyObject *obj, PyObject *key);
+
+        PyObject *getDictItem(PyObject *obj, const char *key);
+
+        PyObject *toStr(const char *s);
+
+        PyObject *toStr(const std::string &s);
+
+        std::string fromStr(PyObject *s);
+
+        class PyEngine;
+
+        PyObject *newCustomInstance(PyTypeObject *pType, PyObject *argsTuple, PyObject *kwds = nullptr);
+
+        PyObject *newExceptionInstance(PyTypeObject *pType, PyObject *pValue, PyObject *pTraceback);
+
+        PyObject *newExceptionInstance(std::string msg);
+
+        void checkAndThrowException();
+
+        bool checkAndClearException();
+
+        PyObject *checkAndGetException();   // return new ref
+        PyEngine *currentEngine();
+
+        PyEngine *currentEngineChecked();
 
 // @return borrowed ref
-PyObject* getGlobalMain();
+        PyObject *getGlobalMain();
 
 // @return borrowed ref
-PyObject* getGlobalBuiltin();
+        PyObject *getGlobalBuiltin();
 
-void extendLifeTimeToNextLoop(PyEngine* engine, PyObject* obj);
-}  // namespace script::py_backend
+        void extendLifeTimeToNextLoop(PyEngine *engine, PyObject *obj);
+    }  // namespace script::py_backend
 }  // namespace script

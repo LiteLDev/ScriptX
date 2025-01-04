@@ -93,7 +93,7 @@ void _PyThreadState_DeleteExcept(/*_PyRuntimeState *runtime,*/ PyThreadState *ts
     /* Remove all thread states, except tstate, from the linked list of
        thread states.  This will allow calling PyThreadState_Clear()
        without holding the lock. */
-    PyThreadState *list = interp->tstate_head;
+        PyThreadState *list = interp->threads.head;
     if (list == tstate) {
         list = tstate->next;
     }
@@ -104,7 +104,7 @@ void _PyThreadState_DeleteExcept(/*_PyRuntimeState *runtime,*/ PyThreadState *ts
         tstate->next->prev = tstate->prev;
     }
     tstate->prev = tstate->next = NULL;
-    interp->tstate_head = tstate;
+    interp->threads.head = tstate;
     HEAD_UNLOCK(runtime);
 
     /* Clear and deallocate all stale thread states.  Even if this

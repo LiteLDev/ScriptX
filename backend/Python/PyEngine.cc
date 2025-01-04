@@ -28,161 +28,140 @@ SCRIPTX_BEGIN_IGNORE_DEPRECARED
 
 namespace script::py_backend {
 
-PyEngine::PyEngine(std::shared_ptr<utils::MessageQueue> queue)
-    : queue_(queue ? std::move(queue) : std::make_shared<utils::MessageQueue>()),
-      engineLockHelper(this)
-{
-  if (Py_IsInitialized() == 0)
-  {
-    // Not initialized. So no thread state at this time
+    PyEngine::PyEngine(std::shared_ptr<utils::MessageQueue> queue)
+            : queue_(queue ? std::move(queue) : std::make_shared<utils::MessageQueue>()),
+              engineLockHelper(this) {
+        if (Py_IsInitialized() == 0) {
+            // Not initialized. So no thread state at this time
+            PyStatus status;
+            // Set interpreter configs
+            PyConfig config;
+            PyConfig_InitPythonConfig(&config);
+            status = PyConfig_SetBytesString(&config, &config.stdio_encoding, "utf-8");
+            if (PyStatus_Exception(status)) {
+                PyConfig_Clear(&config);
+                Py_ExitStatusException(status);
+            }
+            py_runtime_settings::initDefaultPythonRuntimeSettings();
 
-    // Set interpreter configs
-    Py_SetStandardStreamEncoding("utf-8", nullptr);
-    py_runtime_settings::initDefaultPythonRuntimeSettings();
+            // Init main interpreter
+            status = Py_InitializeFromConfig(&config);
+            if (PyStatus_Exception(status)) {
+                PyConfig_Clear(&config);
+                Py_ExitStatusException(status);
+            }
+            PyConfig_Clear(&config);
+            // Initialize types
+            namespaceType_ = makeNamespaceType();
+            staticPropertyType_ = makeStaticPropertyType();
+            defaultMetaType_ = makeDefaultMetaclass();
+            emptyPyFunction = makeEmptyPyFunction();
 
-    // Init main interpreter
-    Py_InitializeEx(0);
-    // Init threading environment
-    PyEval_InitThreads();
-    // Initialize types
-    namespaceType_ = makeNamespaceType();
-    staticPropertyType_ = makeStaticPropertyType();
-    defaultMetaType_ = makeDefaultMetaclass();
-    emptyPyFunction = makeEmptyPyFunction();
+            // PyThreadState_GET will cause FATAL error so here use PyThreadState_Swap instead
+            // Store mainInterpreterState and mainThreadState
+            PyThreadState *mainThreadState = PyEval_SaveThread();
+            mainInterpreterState_ = mainThreadState->interp;
+            mainThreadStateInTLS_.set(mainThreadState);
+            // After this, thread state of main interpreter is loaded, and GIL is released.
+            // Any code will run in sub-interpreters. The main interpreter just keeps the runtime environment.
+        }
 
-    PyEval_ReleaseLock();   // release GIL
+        // Use here to protect thread state switch
+        engineLockHelper.waitToEnterEngine();
 
-    // PyThreadState_GET will cause FATAL error so here use PyThreadState_Swap instead
-    // Store mainInterpreterState and mainThreadState
-    PyThreadState* mainThreadState = PyThreadState_Swap(NULL);
-    mainInterpreterState_ = mainThreadState->interp;
-    mainThreadStateInTLS_.set(mainThreadState);
-    PyThreadState_Swap(mainThreadState);
+        // Create new interpreter
+        PyThreadState *newSubState = Py_NewInterpreter();
+        if (!newSubState) {
+            throw Exception("Fail to create sub interpreter");
+        }
+        subInterpreterState_ = newSubState->interp;
 
-    // After this, thread state of main interpreter is loaded, and GIL is released.
-    // Any code will run in sub-interpreters. The main interpreter just keeps the runtime environment.
-  }
+        // Create exception class
+        scriptxExceptionTypeObj = (PyTypeObject *) PyErr_NewExceptionWithDoc("Scriptx.ScriptxException",
+                                                                             "Exception from ScriptX", PyExc_Exception,
+                                                                             NULL);
 
-  // Use here to protect thread state switch
-  engineLockHelper.waitToEnterEngine();
+        // Store created new sub thread state
+        subThreadStateInTLS_.set(newSubState);
 
-  // Record existing thread state into oldState
-  // PyThreadState_GET may cause FATAL error, so use PyThreadState_Swap instead
-  PyThreadState* oldState = PyThreadState_Swap(NULL);
+        // Exit engine locker
+        engineLockHelper.finishExitEngine();
+    }
 
-  // Resume main thread state (to execute Py_NewInterpreter)
-  PyThreadState *mainThreadState = mainThreadStateInTLS_.get();
-  if (mainThreadState == NULL) {
-    // Main-interpreter enter this thread first time with no thread state
-    // Create a new thread state for the main interpreter in the new thread
-    mainThreadState = PyThreadState_New(mainInterpreterState_);
-    // Save to TLS storage
-    mainThreadStateInTLS_.set(mainThreadState);
+    PyEngine::PyEngine() : PyEngine(nullptr) {}
 
-    // Load the thread state created just now
-    PyThreadState_Swap(mainThreadState);
-  }
-  else
-  {
-    // Thread state of main-interpreter on current thread is inited & saved in TLS
-    // Just load it
-    PyThreadState_Swap(mainThreadState);
-  }
+    PyEngine::~PyEngine() = default;
 
-  // Create new interpreter
-  PyThreadState* newSubState = Py_NewInterpreter();
-  if (!newSubState) {
-    throw Exception("Fail to create sub interpreter");
-  }
-  subInterpreterState_ = newSubState->interp;
+    void PyEngine::destroy() noexcept {
+        destroying = true;
+        engineLockHelper.startDestroyEngine();
+        ScriptEngine::destroyUserData();
 
-  // Create exception class
-  scriptxExceptionTypeObj = (PyTypeObject*)PyErr_NewExceptionWithDoc("Scriptx.ScriptxException",
-    "Exception from ScriptX", PyExc_Exception, NULL);
+        {
+            // EngineScope enter(this);
+            messageQueue()->removeMessageByTag(this);
+            messageQueue()->shutdown();
+            PyEngine::refsKeeper.dtor(this);          // destroy all Global and Weak refs of current engine
+        }
 
-  // Store created new sub thread state & recover old thread state stored before
-  subThreadStateInTLS_.set(newSubState);
-  PyThreadState_Swap(oldState);
+        // =========================================
+        // Attention! The logic below is partially referenced from Py_FinalizeEx and Py_EndInterpreter
+        // in Python source code, so it may need to be re-adapted as the CPython backend's version
+        // is updated.
 
-  // Exit engine locker
-  engineLockHelper.finishExitEngine();
-}
+        // Swap to correct target thread state
+        PyThreadState *tstate = subThreadStateInTLS_.get();
+        PyInterpreterState *interp = tstate->interp;
+        PyThreadState *oldThreadState = PyThreadState_Swap(tstate);
 
-PyEngine::PyEngine() : PyEngine(nullptr) {}
+        // Set finalizing sign
+        SetPyInterpreterStateFinalizing(interp);
 
-PyEngine::~PyEngine() = default;
+        /* Destroy the state of all threads of the interpreter, except of the
+          current thread. In practice, only daemon threads should still be alive,
+          except if wait_for_thread_shutdown() has been cancelled by CTRL+C.
+          Clear frames of other threads to call objects destructors. Destructors
+          will be called in the current Python thread. */
+        _PyThreadState_DeleteExcept(tstate);
 
-void PyEngine::destroy() noexcept {
-  destroying = true;
-  engineLockHelper.startDestroyEngine();
-  ScriptEngine::destroyUserData();
+        PyGC_Collect();
 
-  {
-    // EngineScope enter(this);
-    messageQueue()->removeMessageByTag(this);
-    messageQueue()->shutdown();
-    PyEngine::refsKeeper.dtor(this);          // destroy all Global and Weak refs of current engine
-  }
+        // End sub-interpreter
+        Py_EndInterpreter(tstate);
 
-  // =========================================
-  // Attention! The logic below is partially referenced from Py_FinalizeEx and Py_EndInterpreter
-  // in Python source code, so it may need to be re-adapted as the CPython backend's version 
-  // is updated.
-  
-  // Swap to correct target thread state
-  PyThreadState* tstate = subThreadStateInTLS_.get();
-  PyInterpreterState *interp = tstate->interp;
-  PyThreadState* oldThreadState = PyThreadState_Swap(tstate);
+        // Recover old thread state
+        PyThreadState_Swap(oldThreadState);
 
-  // Set finalizing sign
-  SetPyInterpreterStateFinalizing(interp);
+        // =========================================
 
-  /* Destroy the state of all threads of the interpreter, except of the
-    current thread. In practice, only daemon threads should still be alive,
-    except if wait_for_thread_shutdown() has been cancelled by CTRL+C.
-    Clear frames of other threads to call objects destructors. Destructors
-    will be called in the current Python thread. */
-  _PyThreadState_DeleteExcept(tstate);
+        engineLockHelper.endDestroyEngine();
+    }
 
-  PyGC_Collect();
+    Local<Value> PyEngine::get(const Local<String> &key) {
+        // First find in __builtins__
+        PyObject *item = getDictItem(getGlobalBuiltin(), key.toStringHolder().c_str());
+        if (item)
+            return py_interop::toLocal<Value>(item);
+        else {
+            // No found. Find in __main__
+            item = getDictItem(getGlobalMain(), key.toStringHolder().c_str());
+            if (item)
+                return py_interop::toLocal<Value>(item);
+            else
+                return py_interop::toLocal<Value>(Py_None);
+        }
+    }
 
-  // End sub-interpreter
-  Py_EndInterpreter(tstate);
+    void PyEngine::set(const Local<String> &key, const Local<Value> &value) {
+        setDictItem(getGlobalBuiltin(), key.toStringHolder().c_str(), value.val_);
+        //Py_DECREF(value.val_);
+    }
 
-  // Recover old thread state
-  PyThreadState_Swap(oldThreadState);
+    Local<Value> PyEngine::eval(const Local<String> &script) { return eval(script, Local<Value>()); }
 
-  // =========================================
-
-  engineLockHelper.endDestroyEngine();
-}
-
-Local<Value> PyEngine::get(const Local<String>& key) {
-  // First find in __builtins__
-  PyObject* item = getDictItem(getGlobalBuiltin(), key.toStringHolder().c_str());
-  if (item)
-    return py_interop::toLocal<Value>(item);
-  else
-  {
-    // No found. Find in __main__
-    item = getDictItem(getGlobalMain(), key.toStringHolder().c_str());
-    if (item)
-      return py_interop::toLocal<Value>(item);
-    else
-      return py_interop::toLocal<Value>(Py_None);
-  }
-}
-
-void PyEngine::set(const Local<String>& key, const Local<Value>& value) {
-  setDictItem(getGlobalBuiltin(), key.toStringHolder().c_str(), value.val_);
-  //Py_DECREF(value.val_);
-}
-
-Local<Value> PyEngine::eval(const Local<String>& script) { return eval(script, Local<Value>()); }
-
-Local<Value> PyEngine::eval(const Local<String>& script, const Local<String>& sourceFile) {
-  return eval(script, sourceFile.asValue());
-}
+    Local<Value> PyEngine::eval(const Local<String> &script, const Local<String> &sourceFile) {
+        return eval(script, sourceFile.asValue());
+    }
 
 //
 // Attention! CPython's eval is much different from other languages. We have not found a perfect way
@@ -213,98 +192,94 @@ Local<Value> PyEngine::eval(const Local<String>& script, const Local<String>& so
 //     throw out the exception got here.
 // - See more docs at docs/en/Python.md. There is still room for improvement in this logic. 
 //
-Local<Value> PyEngine::eval(const Local<String>& script, const Local<Value>& sourceFile) {
-  Tracer tracer(this, "PyEngine::eval");
-  const char* source = script.toStringHolder().c_str();
+    Local<Value> PyEngine::eval(const Local<String> &script, const Local<Value> &sourceFile) {
+        Tracer tracer(this, "PyEngine::eval");
+        const char *source = script.toStringHolder().c_str();
 
-  bool mayCodeBeExpression = true;
-  // Use simple rules to find out the input that cannot be an expression
-  if (strchr(source, '\n') != nullptr)
-    mayCodeBeExpression = false;
-  else if (strstr(source, " = ") != nullptr)
-    mayCodeBeExpression = false;
+        bool mayCodeBeExpression = true;
+        // Use simple rules to find out the input that cannot be an expression
+        if (strchr(source, '\n') != nullptr)
+            mayCodeBeExpression = false;
+        else if (strstr(source, " = ") != nullptr)
+            mayCodeBeExpression = false;
 
-  if(!mayCodeBeExpression)
-  {
-    // No way to get return value. result value is always Py_None
-    PyObject* result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
-    return py_interop::asLocal<Value>(result);
-  }
-  // Try to eval in "Py_eval_input" mode
-  PyObject* result = PyRun_StringFlags(source, Py_eval_input, getGlobalMain(), nullptr, nullptr);
-  if (PyErr_Occurred()) {
-    // Get exception
-    PyTypeObject *pType;
-    PyObject *pValue, *pTraceback;
-    PyErr_Fetch((PyObject**)(&pType), &pValue, &pTraceback);
-    PyErr_NormalizeException((PyObject**)(&pType), &pValue, &pTraceback);
+        if (!mayCodeBeExpression) {
+            // No way to get return value. result value is always Py_None
+            PyObject *result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
+            return py_interop::asLocal<Value>(result);
+        }
+        // Try to eval in "Py_eval_input" mode
+        PyObject *result = PyRun_StringFlags(source, Py_eval_input, getGlobalMain(), nullptr, nullptr);
+        if (PyErr_Occurred()) {
+            // Get exception
+            PyTypeObject *pType;
+            PyObject *pValue, *pTraceback;
+            PyErr_Fetch((PyObject **) (&pType), &pValue, &pTraceback);
+            PyErr_NormalizeException((PyObject **) (&pType), &pValue, &pTraceback);
 
-    // is SyntaxError?
-    std::string typeName{pType->tp_name};
-    if(typeName.find("SyntaxError") != std::string::npos)
-    {
-      Py_XDECREF(pType);
-      Py_XDECREF(pValue);
-      Py_XDECREF(pTraceback);
-      // Code is not actually executed now. Try Py_file_input again.
-      PyObject* result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
-      checkAndThrowException();     // If get exception again, just throw it
-      return py_interop::asLocal<Value>(result);    // Succeed in Py_file_input. Return None.
+            // is SyntaxError?
+            std::string typeName{pType->tp_name};
+            if (typeName.find("SyntaxError") != std::string::npos) {
+                Py_XDECREF(pType);
+                Py_XDECREF(pValue);
+                Py_XDECREF(pTraceback);
+                // Code is not actually executed now. Try Py_file_input again.
+                PyObject *result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
+                checkAndThrowException();     // If get exception again, just throw it
+                return py_interop::asLocal<Value>(result);    // Succeed in Py_file_input. Return None.
+            } else {
+                // Not SyntaxError. Must throw out here
+                Exception e(py_interop::asLocal<Value>(newExceptionInstance(pType, pValue, pTraceback)));
+                Py_XDECREF(pType);
+                Py_XDECREF(pValue);
+                Py_XDECREF(pTraceback);
+                throw e;
+            }
+        } else
+            return py_interop::asLocal<Value>(result);    // No exception. Return the value got.
     }
-    else {
-      // Not SyntaxError. Must throw out here
-      Exception e(py_interop::asLocal<Value>(newExceptionInstance(pType, pValue, pTraceback)));
-      Py_XDECREF(pType);
-      Py_XDECREF(pValue);
-      Py_XDECREF(pTraceback);
-      throw e;
+
+    Local<Value> PyEngine::loadFile(const Local<String> &scriptFile) {
+        Tracer tracer(this, "PyEngine::loadFile");
+        std::string sourceFilePath = scriptFile.toString();
+        if (sourceFilePath.empty()) {
+            throw Exception("script file no found");
+        }
+        Local<Value> content = internal::readAllFileContent(scriptFile);
+        if (content.isNull()) {
+            throw Exception("can't load script file");
+        }
+
+        std::size_t pathSymbol = sourceFilePath.rfind("/");
+        if (pathSymbol != std::string::npos) {
+            sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
+        } else {
+            pathSymbol = sourceFilePath.rfind("\\");
+            if (pathSymbol != std::string::npos) sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
+        }
+        Local<String> sourceFileName = String::newString(sourceFilePath);
+
+        const char *source = content.asString().toStringHolder().c_str();
+        PyObject *result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
+        checkAndThrowException();
+        return py_interop::asLocal<Value>(result);
     }
-  }
-  else
-    return py_interop::asLocal<Value>(result);    // No exception. Return the value got.
-}
 
-Local<Value> PyEngine::loadFile(const Local<String>& scriptFile) {
-  Tracer tracer(this, "PyEngine::loadFile");
-  std::string sourceFilePath = scriptFile.toString();
-  if (sourceFilePath.empty()) {
-    throw Exception("script file no found");
-  }
-  Local<Value> content = internal::readAllFileContent(scriptFile);
-  if (content.isNull()) {
-    throw Exception("can't load script file");
-  }
+    std::shared_ptr<utils::MessageQueue> PyEngine::messageQueue() { return queue_; }
 
-  std::size_t pathSymbol = sourceFilePath.rfind("/");
-  if (pathSymbol != std::string::npos) {
-    sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
-  } else {
-    pathSymbol = sourceFilePath.rfind("\\");
-    if (pathSymbol != std::string::npos) sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
-  }
-  Local<String> sourceFileName = String::newString(sourceFilePath);
+    void PyEngine::gc() {
+        if (isDestroying())
+            return;
+        PyGC_Collect();
+    }
 
-  const char* source = content.asString().toStringHolder().c_str();
-  PyObject* result = PyRun_StringFlags(source, Py_file_input, getGlobalMain(), nullptr, nullptr);
-  checkAndThrowException();
-  return py_interop::asLocal<Value>(result);
-}
+    void PyEngine::adjustAssociatedMemory(int64_t count) {}
 
-std::shared_ptr<utils::MessageQueue> PyEngine::messageQueue() { return queue_; }
+    ScriptLanguage PyEngine::getLanguageType() { return ScriptLanguage::kPython; }
 
-void PyEngine::gc() { 
-  if(isDestroying())
-    return;
-  PyGC_Collect(); 
-}
+    std::string PyEngine::getEngineVersion() { return Py_GetVersion(); }
 
-void PyEngine::adjustAssociatedMemory(int64_t count) {}
-
-ScriptLanguage PyEngine::getLanguageType() { return ScriptLanguage::kPython; }
-
-std::string PyEngine::getEngineVersion() { return Py_GetVersion(); }
-
-bool PyEngine::isDestroying() const { return destroying; }
+    bool PyEngine::isDestroying() const { return destroying; }
 
 }  // namespace script::py_backend
 
