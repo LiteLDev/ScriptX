@@ -141,7 +141,6 @@ void V8Engine::registerNativeClassInstance(v8::Local<v8::FunctionTemplate> funcT
 
   // instance
   auto instanceT = funcT->PrototypeTemplate();
-  auto accessSignature = v8::AccessorSignature::New(isolate_, funcT);
   auto signature = v8::Signature::New(isolate_, funcT);
   for (auto& prop : classDefine->instanceDefine.properties) {
     StackFrameScope stack;
@@ -187,8 +186,7 @@ void V8Engine::registerNativeClassInstance(v8::Local<v8::FunctionTemplate> funcT
     instanceT->SetAccessor(
         toV8(isolate_, name), getter, setter,
         v8::External::New(isolate_,
-                          const_cast<typename internal::InstanceDefine<T>::PropertyDefine*>(&prop)),
-        v8::AccessControl::DEFAULT, v8::PropertyAttribute::DontDelete, accessSignature);
+                          const_cast<typename internal::InstanceDefine<T>::PropertyDefine*>(&prop)), v8::PropertyAttribute::DontDelete);
   }
 
   for (auto& func : classDefine->instanceDefine.functions) {

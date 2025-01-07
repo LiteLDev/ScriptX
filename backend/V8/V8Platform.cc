@@ -141,7 +141,7 @@ V8Platform::V8Platform() : defaultPlatform_(v8::platform::NewDefaultPlatform()) 
 
 V8Platform::~V8Platform() {
   std::lock_guard<std::mutex> lock(lock_);
-  v8::V8::ShutdownPlatform();
+  v8::V8::DisposePlatform();
 }
 
 std::shared_ptr<v8::TaskRunner> V8Platform::GetForegroundTaskRunner(v8::Isolate* isolate) {
@@ -164,11 +164,6 @@ bool V8Platform::pumpMessageQueue(v8::Isolate* isolate) {
 void V8Platform::OnCriticalMemoryPressure() {
   Logger() << "V8Platform::OnCriticalMemoryPressure()";
   return defaultPlatform_->OnCriticalMemoryPressure();
-}
-
-bool V8Platform::OnCriticalMemoryPressure(size_t length) {
-  Logger() << "V8Platform::OnCriticalMemoryPressure(" << length << ")";
-  return defaultPlatform_->OnCriticalMemoryPressure(length);
 }
 
 }  // namespace script::v8_backend

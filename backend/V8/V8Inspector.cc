@@ -86,7 +86,7 @@ class InspectorClient : public v8_inspector::V8InspectorClient, public script::S
 
     channel_ = std::make_unique<InspectorFrontend>(agent_.get());
     inspector_ = v8_inspector::V8Inspector::create(isolate_, this);
-    session_ = inspector_->connect(kContextGroupId, channel_.get(), v8_inspector::StringView());
+    session_ = inspector_->connect(kContextGroupId, channel_.get(), v8_inspector::StringView(), v8_inspector::V8Inspector::ClientTrustLevel::kFullyTrusted);
 
     inspector_->contextCreated(v8_inspector::V8ContextInfo(
         context, kContextGroupId,

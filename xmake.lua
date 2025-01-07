@@ -1,6 +1,6 @@
 add_rules("mode.debug", "mode.release")
 
-add_repositories("liteldev-repo https://github.com/LiteLDev/xmake-repo.git")
+add_repositories("liteldev-repo C:\\Users\\shrbo\\OtherProjects\\xmake-repo")
 
 if is_config("backend", "Lua") then
     add_requires("lua v5.4.7", {configs={shared=true}})
@@ -12,7 +12,7 @@ elseif is_config("backend", "Python") then
     add_requires("python 3.12.8", {configs={shared=true}})
 
 elseif is_config("backend", "V8") then
-    add_requires("node v16.16.0", {configs={shared=true}})
+    add_requires("node v22.12.0", {configs={shared=true}})
     
 end
 
