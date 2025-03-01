@@ -1,6 +1,6 @@
 add_rules("mode.debug", "mode.release")
 
-add_repositories("liteldev-repo C:\\Users\\shrbo\\OtherProjects\\xmake-repo")
+add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 
 if is_config("backend", "Lua") then
     add_requires("lua v5.4.7", {configs={shared=true}})
