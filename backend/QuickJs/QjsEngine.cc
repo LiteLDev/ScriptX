@@ -293,7 +293,17 @@ Local<Value> QjsEngine::loadFile(const Local<String>& scriptFile) {
   JSValue ret = JS_Eval(context_, contentStr.c_str(), contentStr.length(), fileNameStr.c_str(),
                         JS_EVAL_TYPE_MODULE);
 
+  // Syntax error
   qjs_backend::checkException(ret);
+
+  // Error occurred during loading
+  JSPromiseStateEnum state = JS_PromiseState(context_, ret);
+  if (state == JSPromiseStateEnum::JS_PROMISE_REJECTED) {
+    JSValue msg = JS_PromiseResult(context_, ret);
+    JS_Throw(context_, msg);
+    qjs_backend::checkException(-1);
+  }
+
   scheduleTick();
 
   return Local<Value>(ret);
