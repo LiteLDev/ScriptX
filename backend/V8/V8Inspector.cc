@@ -119,8 +119,8 @@ class InspectorClient : public v8_inspector::V8InspectorClient, public script::S
 
     script::ExitEngineScope exit;
     while (paused_) {
-      while (engine_->v8Platform_->pumpMessageQueue(isolate_)) {
-      }
+        while (engine_->v8Platform_->pumpMessageQueue(isolate_)) {
+        }
 
       // avoid 100% cpu usage
       std::this_thread::sleep_for(std::chrono::milliseconds(kTimeToWaitOnThreadPause));
@@ -165,7 +165,7 @@ class InspectorClient : public v8_inspector::V8InspectorClient, public script::S
     debuggerAttached_ = true;
 
     v8_inspector::StringView message(reinterpret_cast<const uint8_t*>(utf8.data()), utf8.length());
-    engine_->v8Platform_->GetForegroundTaskRunner(isolate_)->PostTask(
+    engine_->v8Platform_->GetForegroundTaskRunner(isolate_, v8::TaskPriority::kUserBlocking)->PostTask(
         std::make_unique<DispatchMessageToEngineTask>(engine_, session_.get(),
                                                       v8_inspector::StringBuffer::create(message)));
   }

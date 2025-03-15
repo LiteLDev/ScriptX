@@ -55,6 +55,8 @@ class V8Platform : public v8::Platform {
 #else
   std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(v8::Isolate* isolate) override;
 #endif
+  // call in V8Engine
+  bool pumpMessageQueue(v8::Isolate* isolate);
 
   void OnCriticalMemoryPressure() override;
 

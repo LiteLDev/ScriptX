@@ -209,6 +209,11 @@ std::shared_ptr<v8::TaskRunner> V8Platform::GetForegroundTaskRunner(v8::Isolate*
   return queueRunner;
 }
 
+bool V8Platform::pumpMessageQueue(v8::Isolate* isolate) {
+    v8::Locker locker(isolate);
+    return v8::platform::PumpMessageLoop(defaultPlatform_.get(), isolate);
+}
+
 void V8Platform::OnCriticalMemoryPressure() {
   Logger() << "V8Platform::OnCriticalMemoryPressure()";
   return defaultPlatform_->OnCriticalMemoryPressure();

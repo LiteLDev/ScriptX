@@ -204,9 +204,9 @@ namespace script::py_backend {
         }
 
         template<typename T>
-        PyObject *warpInstanceGetter(const char *name, InstanceGetterCallback<T> callback) {
+        PyObject *warpInstanceGetter(const char *name, InstanceGetterCallback callback) {
             struct FunctionData {
-                InstanceGetterCallback<T> function;
+                InstanceGetterCallback function;
                 PyEngine *engine;
                 std::string name;
             };
@@ -308,9 +308,9 @@ namespace script::py_backend {
         }
 
         template<typename T>
-        PyObject *warpInstanceSetter(const char *name, InstanceSetterCallback<T> callback) {
+        PyObject *warpInstanceSetter(const char *name, InstanceGetterCallback callback) {
             struct FunctionData {
-                InstanceSetterCallback<T> function;
+                InstanceGetterCallback function;
                 PyEngine *engine;
                 std::string name;
             };
@@ -472,7 +472,7 @@ namespace script::py_backend {
         void registerInstanceFunction(const ClassDefine<T> *classDefine, PyObject *type) {
             for (const auto &f: classDefine->instanceDefine.functions) {
                 struct FunctionData {
-                    InstanceFunctionCallback<T> function;
+                    InstanceFunctionCallback function;
                     py_backend::PyEngine *engine;
                     std::string name;
                 };

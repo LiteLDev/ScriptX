@@ -303,7 +303,7 @@ Local<Value> QjsEngine::loadFile(const Local<String>& scriptFile) {
     qjs_backend::checkException(-1);
   }
 
-  scheduleTick();
+  triggerTick();
 
   return Local<Value>(ret);
 }
