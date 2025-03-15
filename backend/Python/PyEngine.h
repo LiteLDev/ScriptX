@@ -101,13 +101,26 @@ namespace script::py_backend {
     protected:
         ~PyEngine() override;
 
+        void performRegisterNativeClass(
+                internal::TypeIndex typeIndex, const internal::ClassDefineState *classDefine,
+                script::ScriptClass *(*instanceTypeToScriptClass)(void *)) override;
+
+        void *performGetNativeInstance(const Local<script::Value> &value,
+                                       const internal::ClassDefineState *classDefine) override;
+
+        bool performIsInstanceOf(const Local<script::Value> &value,
+                                 const internal::ClassDefineState *classDefine) override;
+
+        Local<Object> performNewNativeClass(internal::TypeIndex typeIndex,
+                                            const internal::ClassDefineState *classDefine, size_t size,
+                                            const Local<script::Value> *args) override;
+
     private:
         /*
         * namespace will be created as a dict object, which is set in the Global Dict
         */
-        template<typename T>
-        void nameSpaceSet(const ClassDefine<T> *classDefine, const std::string &name, PyObject *type) {
-            std::string nameSpace = classDefine->getNameSpace();
+        void nameSpaceSet(const internal::ClassDefineState *classDefine, const std::string &name, PyObject *type) {
+            std::string nameSpace = classDefine->nameSpace;
             PyObject *nameSpaceObj = getGlobalBuiltin();
 
             if (nameSpace.empty()) {
@@ -203,7 +216,6 @@ namespace script::py_backend {
             return function;
         }
 
-        template<typename T>
         PyObject *warpInstanceGetter(const char *name, InstanceGetterCallback callback) {
             struct FunctionData {
                 InstanceGetterCallback function;
@@ -217,7 +229,7 @@ namespace script::py_backend {
             method->ml_doc = nullptr;
             method->ml_meth = [](PyObject *self, PyObject *args) -> PyObject * {
                 auto data = static_cast<FunctionData *>(PyCapsule_GetPointer(self, nullptr));
-                T *cppThiz = GeneralObject::getInstance<T>(PyTuple_GetItem(args, 0));
+                auto *cppThiz = GeneralObject::getInstance(PyTuple_GetItem(args, 0));
                 try {
                     Tracer tracer(data->engine, data->name);
                     Local<Value> ret = data->function(cppThiz);
@@ -307,10 +319,9 @@ namespace script::py_backend {
             return function;
         }
 
-        template<typename T>
-        PyObject *warpInstanceSetter(const char *name, InstanceGetterCallback callback) {
+        PyObject *warpInstanceSetter(const char *name, InstanceSetterCallback callback) {
             struct FunctionData {
-                InstanceGetterCallback function;
+                InstanceSetterCallback function;
                 PyEngine *engine;
                 std::string name;
             };
@@ -321,7 +332,7 @@ namespace script::py_backend {
             method->ml_doc = nullptr;
             method->ml_meth = [](PyObject *self, PyObject *args) -> PyObject * {
                 auto data = static_cast<FunctionData *>(PyCapsule_GetPointer(self, nullptr));
-                T *cppThiz = GeneralObject::getInstance<T>(PyTuple_GetItem(args, 0));
+                auto *cppThiz = GeneralObject::getInstance(PyTuple_GetItem(args, 0));
                 try {
                     Tracer tracer(data->engine, data->name);
                     data->function(cppThiz, py_interop::toLocal<Value>(PyTuple_GetItem(args, 1)));
@@ -360,8 +371,7 @@ namespace script::py_backend {
             return function;
         }
 
-        template<typename T>
-        void registerStaticProperty(const ClassDefine<T> *classDefine, PyObject *type) {
+        void registerStaticProperty(const internal::ClassDefineState *classDefine, PyObject *type) {
             for (const auto &property: classDefine->staticDefine.properties) {
                 PyObject *g = nullptr;
                 if (property.getter) {
@@ -384,8 +394,7 @@ namespace script::py_backend {
             }
         }
 
-        template<typename T>
-        void registerInstanceProperty(const ClassDefine<T> *classDefine, PyObject *type) {
+        void registerInstanceProperty(const internal::ClassDefineState *classDefine, PyObject *type) {
             for (const auto &property: classDefine->instanceDefine.properties) {
                 PyObject *g = nullptr;
                 if (property.getter) {
@@ -408,8 +417,7 @@ namespace script::py_backend {
             }
         }
 
-        template<typename T>
-        void registerStaticFunction(const ClassDefine<T> *classDefine, PyObject *type) {
+        void registerStaticFunction(const internal::ClassDefineState *classDefine, PyObject *type) {
             for (const auto &f: classDefine->staticDefine.functions) {
                 struct FunctionData {
                     FunctionCallback function;
@@ -468,8 +476,7 @@ namespace script::py_backend {
             }
         }
 
-        template<typename T>
-        void registerInstanceFunction(const ClassDefine<T> *classDefine, PyObject *type) {
+        void registerInstanceFunction(const internal::ClassDefineState *classDefine, PyObject *type) {
             for (const auto &f: classDefine->instanceDefine.functions) {
                 struct FunctionData {
                     InstanceFunctionCallback function;
@@ -497,7 +504,7 @@ namespace script::py_backend {
                     //
                     auto data = static_cast<FunctionData *>(PyCapsule_GetPointer(self, nullptr));
                     PyObject *thiz = PyTuple_GetItem(args, 0);
-                    T *cppThiz = GeneralObject::getInstance<T>(thiz);
+                    auto *cppThiz = GeneralObject::getInstance(thiz);
                     PyObject *real_args = PyTuple_GetSlice(args, 1, PyTuple_Size(args));
 
                     try {
@@ -545,124 +552,6 @@ namespace script::py_backend {
             }
         }
 
-        template<typename T>
-        void registerNativeClassImpl(const ClassDefine<T> *classDefine) {
-            auto name_obj = toStr(classDefine->className.c_str());
-
-            auto *heap_type = (PyHeapTypeObject *) PyType_GenericAlloc(PyEngine::defaultMetaType_, 0);
-            if (!heap_type) {
-                Py_FatalError("error allocating type!");
-            }
-
-            heap_type->ht_name = Py_NewRef(name_obj);
-            heap_type->ht_qualname = Py_NewRef(name_obj);
-            Py_DECREF(name_obj);
-
-            auto *type = &heap_type->ht_type;
-            type->tp_name = classDefine->className.c_str();
-            Py_INCREF(&PyBaseObject_Type);
-            type->tp_base = &PyBaseObject_Type;
-            type->tp_basicsize = static_cast<Py_ssize_t>(sizeof(GeneralObject));
-            type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE;
-
-            // enable object dict
-            type->tp_dictoffset = SCRIPTX_OFFSET_OF(GeneralObject, instanceDict);
-
-            /* Support weak references (needed for the keep_alive feature) */
-            type->tp_weaklistoffset = SCRIPTX_OFFSET_OF(GeneralObject, weakrefs);
-
-            type->tp_new = [](PyTypeObject *type, PyObject *args, PyObject *kwds) -> PyObject * {
-                PyObject *self = type->tp_alloc(type, 0);
-                return self;
-            };
-            type->tp_init = [](PyObject *self, PyObject *args, PyObject *kwds) -> int {
-                auto engine = currentEngine();
-                auto classDefine =
-                        reinterpret_cast<const ClassDefine<T> *>(engine->registeredTypesReverse_[self->ob_type]);
-                if (classDefine->instanceDefine.constructor) {
-                    Tracer tracer(engine, classDefine->getClassName());
-                    GeneralObject *cppSelf = reinterpret_cast<GeneralObject *>(self);
-
-                    if (!PyTuple_Check(args)) {
-                        throw Exception(std::string("Can't create class ") + Py_TYPE(self)->tp_name);
-                        return -1;
-                    }
-
-                    if (PyTuple_Size(args) == 1) {
-                        PyObject *maybeCapsule = PyTuple_GetItem(args, 0);
-                        if (PyCapsule_CheckExact(maybeCapsule)) {
-                            // Passed a cpp this in capsule
-                            // Logic for ScriptClass(const ScriptClass::ConstructFromCpp<T>)
-                            cppSelf->instance = (void *) PyCapsule_GetPointer(maybeCapsule, nullptr);
-                        }
-                    }
-
-                    if (cppSelf->instance == nullptr) {
-                        // Python-side constructor
-                        // Logic for ScriptClass::ScriptClass(const Local<Object>& thiz)
-                        cppSelf->instance =
-                                classDefine->instanceDefine.constructor(py_interop::makeArguments(engine, self, args));
-                        if (cppSelf->instance == nullptr) {
-                            throw Exception(std::string("Can't create class ") + Py_TYPE(self)->tp_name);
-                            return -1;
-                        }
-                    }
-                } else {
-                    // Will never reach here. If pass nullptr to constructor(), ScriptX will make
-                    // constructor to be a function that always returns nullptr.
-                    return -1;
-                }
-                return 0;
-            };
-            type->tp_dealloc = [](PyObject *self) {
-                auto type = Py_TYPE(self);
-                delete (T *) (reinterpret_cast<GeneralObject *>(self)->instance);
-                type->tp_free(self);
-                Py_DECREF(type);
-            };
-
-            if (PyType_Ready(type) < 0) {
-                throw Exception("PyType_Ready failed in make_object_base_type()");
-            }
-
-            setAttr((PyObject *) type, "__module__", toStr("scriptx_builtins"));
-
-            this->registerStaticProperty(classDefine, (PyObject *) type);
-            this->registerStaticFunction(classDefine, (PyObject *) type);
-            this->registerInstanceProperty(classDefine, (PyObject *) type);
-            this->registerInstanceFunction(classDefine, (PyObject *) type);
-            this->registeredTypes_.emplace(classDefine, type);
-            this->registeredTypesReverse_.emplace(type, classDefine);
-            this->nameSpaceSet(classDefine, classDefine->className.c_str(), (PyObject *) type);
-        }
-
-        template<typename T>
-        Local<Object> newNativeClassImpl(const ClassDefine<T> *classDefine, size_t size,
-                                         const Local<Value> *args) {
-            PyObject *tuple = PyTuple_New(size);
-            for (size_t i = 0; i < size; ++i) {
-                Py_INCREF(args[i].val_);      // PyTuple_SetItem will steal the ref
-                PyTuple_SetItem(tuple, i, args[i].val_);
-            }
-
-            PyTypeObject *type = registeredTypes_[classDefine];
-            PyObject *obj = py_backend::newCustomInstance(type, tuple);
-            Py_DECREF(tuple);
-            return py_interop::asLocal<Object>(obj);
-        }
-
-        template<typename T>
-        bool isInstanceOfImpl(const Local<Value> &value, const ClassDefine<T> *classDefine) {
-            return registeredTypes_[classDefine] == value.val_->ob_type;
-        }
-
-        template<typename T>
-        T *getNativeInstanceImpl(const Local<Value> &value, const ClassDefine<T> *classDefine) {
-            if (!isInstanceOfImpl(value, classDefine)) {
-                throw Exception("Unmatched type of the value!");
-            }
-            return GeneralObject::getInstance<T>(value.val_);
-        }
 
     private:
         template<typename T>
