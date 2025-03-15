@@ -53,16 +53,36 @@ include(${CMAKE_CURRENT_LIST_DIR}/test_libs/CMakeLists.txt)
 
 if (${SCRIPTX_BACKEND} STREQUAL V8)
     if (SCRIPTX_TEST_BUILD_ONLY)
+      if ("${SCRIPTX_V8_INCLUDES}" STREQUAL "")
         set(DEVOPS_LIBS_INCLUDE
-                "${SCRIPTX_TEST_LIBS}/v8/mac/include"
-                CACHE STRING "" FORCE)
+          "${SCRIPTX_TEST_LIBS}/v8/mac/include"
+          CACHE STRING "" FORCE)
+      else()
+        set(DEVOPS_LIBS_INCLUDE
+          "${SCRIPTX_V8_INCLUDES}"
+          CACHE STRING "" FORCE)
+      endif()
     elseif (APPLE)
-        set(DEVOPS_LIBS_INCLUDE
-                "${SCRIPTX_TEST_LIBS}/v8/mac/include"
-                CACHE STRING "" FORCE)
-        set(DEVOPS_LIBS_LIBPATH
-                "${SCRIPTX_TEST_LIBS}/v8/mac/libv8_monolith.a"
-                CACHE STRING "" FORCE)
+        if (CMAKE_SYSTEM_PROCESSOR STREQUAL arm64)
+            set(DEVOPS_LIBS_INCLUDE
+                    "${SCRIPTX_TEST_LIBS}/v8/mac_arm64/include"
+                    CACHE STRING "" FORCE)
+            set(DEVOPS_LIBS_LIBPATH
+                    "${SCRIPTX_TEST_LIBS}/v8/mac_arm64/libv8_monolith.a"
+                    CACHE STRING "" FORCE)
+            set(DEVOPS_LIBS_MARCO
+                    V8_COMPRESS_POINTERS
+                    V8_ATOMIC_OBJECT_FIELD_WRITES
+                    V8_SHARED_RO_HEAP
+                    CACHE STRING "" FORCE)
+        else ()
+            set(DEVOPS_LIBS_INCLUDE
+                    "${SCRIPTX_TEST_LIBS}/v8/mac/include"
+                    CACHE STRING "" FORCE)
+            set(DEVOPS_LIBS_LIBPATH
+                    "${SCRIPTX_TEST_LIBS}/v8/mac/libv8_monolith.a"
+                    CACHE STRING "" FORCE)
+        endif ()
     elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # v8 8.8
         set(DEVOPS_LIBS_INCLUDE

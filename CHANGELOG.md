@@ -1,3 +1,30 @@
+Version 3.6.0 (2024-09):
+1. `[V8]` add test infrastructure to test on multiple v8 versions
+2. `[V8]` add support to v8 versions through 7.4~13.0
+
+Version 3.5.0 (2023-05):
+1. `[QuickJs]` add support for QuickJs 2024-01-13
+
+Version 3.4.0 (2023-05):
+1. `[V8]` **BEHAVIOR CHANGE:** `V8Platform` now being a singleton, not ref-counted by `V8Engine`s any more.
+2. `[V8]` add support for V8 version 11.4
+3. `[V8]` add test support for V8 arm64
+
+---
+Version 3.3.1 (2023-03):
+1. `[V8]` add support for V8 version 10.8
+2. `[V8]` add support for node.js version 19.8.1
+
+---
+Version 3.3.0 (2023-03):
+Optimized template to reduce code bloat
+
+size change of UnitTest for release build
+
+Lua: 3097576 - 2758032 = 339,544
+JavaScriptCore: 3670032 - 3380048 = 289,984
+V8: 22610696 - 22240400 = 370,296
+WebAssembly: 1640551 - 1444942 = 195,60
 
 ---
 Version 3.2.0 (2021-12):

@@ -19,8 +19,9 @@
 #include "../../src/Reference.h"
 #include "../../src/Scope.h"
 #include "../../src/Value.h"
-#include "JscEngine.hpp"
+#include "JscEngine.h"
 #include "JscHelper.hpp"
+#include "JscReference.hpp"
 
 namespace script {
 

@@ -22,7 +22,7 @@
 #include "../../src/Reference.h"
 #include "../../src/Utils.h"
 #include "../../src/Value.h"
-#include "JscEngine.hpp"
+#include "JscEngine.h"
 #include "JscHelper.hpp"
 #include "JscReference.hpp"
 #include "trait/TraitReference.h"
@@ -501,7 +501,7 @@ ByteBuffer::Type mapType(JSTypedArrayType type) {
     case kJSTypedArrayTypeUint32Array:
       return ByteBuffer::Type::kUint32;
     case kJSTypedArrayTypeFloat32Array:
-      return ByteBuffer::Type::KFloat32;
+      return ByteBuffer::Type::kFloat32;
     case kJSTypedArrayTypeFloat64Array:
       return ByteBuffer::Type::kFloat64;
     case kJSTypedArrayTypeArrayBuffer:

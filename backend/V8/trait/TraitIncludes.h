@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making ScriptX available.
- * Copyright (C) 2021 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2023 THL A29 Limited, a Tencent company.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,16 @@
 #pragma once
 
 #include "../V8Engine.h"
-#include "../V8Engine.hpp"
+#include "../V8Helper.hpp"
 #include "../V8Native.hpp"
 #include "../V8Reference.hpp"
 #include "../V8Scope.h"
 #include "../V8Scope.hpp"
+
+// internal used marcos
+#undef SCRIPTX_V8_VERSION_AT_LEAST
+#undef SCRIPTX_V8_VERSION_AT_MOST
+#undef SCRIPTX_V8_VERSION_BETWEEN
 
 // global marco
 #define SCRIPTX_BACKEND_V8

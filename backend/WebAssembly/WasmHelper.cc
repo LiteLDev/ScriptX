@@ -18,7 +18,6 @@
 #include "WasmHelper.h"
 #include "../../src/Native.hpp"
 #include "../../src/Scope.h"
-#include "WasmEngine.hpp"
 #include "WasmScope.hpp"
 
 namespace script::wasm_backend {
@@ -98,6 +97,11 @@ EMSCRIPTEN_KEEPALIVE
 intptr_t ScriptX_NativeBuffer_newSharedPtr(intptr_t ptr) {
   return reinterpret_cast<intptr_t>(
       new std::shared_ptr<void>(reinterpret_cast<void *>(ptr), [](void *ptr) { std::free(ptr); }));
+}
+
+EMSCRIPTEN_KEEPALIVE
+intptr_t ScriptX_NativeBuffer_memMalloc(size_t count) {
+  return reinterpret_cast<intptr_t>(std::malloc(count));
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -203,6 +207,8 @@ EM_JS(void, _ScriptX_initJavaScriptLibrary, (), {
   Module._ScriptX_rethrowException = function(e) {
     Module.SCRIPTX_HAS_PENDING_JS_EXCEPTION = true;
     Module.SCRIPTX_STACK.push(e);
+    // debug exception
+    console.log(e);
     return -1;
   };
 
@@ -237,7 +243,7 @@ EM_JS(void, _ScriptX_initJavaScriptLibrary, (), {
     if (arguments.length == 1 && typeof arguments[0] === 'number') {
       // ctor 1
       byteLength = arguments[0];
-      byteOffset = Module._malloc(byteLength);
+      byteOffset = Module._ScriptX_NativeBuffer_memMalloc(byteLength);
       sharedPtr = Module._ScriptX_NativeBuffer_newSharedPtr(byteOffset);
     }
 
@@ -867,7 +873,7 @@ CHECKED_EM_JS(void, _ScriptX_ByteBuffer_fillTypeAndSize,
   const kUint32 = 0x604;
   const kInt64 = 0x708;
   const kUint64 = 0x808;
-  const KFloat32 = 0x904;
+  const kFloat32 = 0x904;
   const kFloat64 = 0xa08;
 
   let type = kUnspecified;
@@ -886,7 +892,7 @@ CHECKED_EM_JS(void, _ScriptX_ByteBuffer_fillTypeAndSize,
   } else if (val instanceof Uint32Array) {
     type = kUint32;
   } else if (val instanceof Float32Array) {
-    type = KFloat32;
+    type = kFloat32;
   } else if (val instanceof Float64Array) {
     type = kFloat64;
   } else if (val instanceof BigInt64Array) {

@@ -17,9 +17,8 @@
 
 #include "JscEngine.h"
 #include "../../src/Native.hpp"
-#include "JscEngine.hpp"
 #include "JscHelper.h"
-#include "../../src/utils/Helper.hpp"
+#include "JscReference.hpp"
 
 namespace script::jsc_backend {
 

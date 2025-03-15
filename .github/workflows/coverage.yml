@@ -14,14 +14,15 @@ on:
 jobs:
   coverage-ubuntu-gcc:
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # JavaScriptCore requires libicu66 which is only avaliable on ubuntu-20.04
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
         backends: [ V8, JavaScriptCore, QuickJs, Lua, Python ]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2
+      - uses: actions/checkout@v4.1.7
+      - uses: actions/cache@v4.0.2
         with:
           key: ScriptX-UnitTests-Depedencies-${{ hashFiles('test/cmake/**') }}
           path: |

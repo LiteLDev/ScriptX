@@ -734,17 +734,32 @@ class BaseClass {
   int age = 0;
   int num = 1;
   const int length = 180;
+  int veryLongArray[1024];
 
-  std::string name() { return "Base"; }
+  // Intentionally virtual to make BaseClassScriptWrapper's memory layout special
+  virtual std::string name() { return "Base"; }
 
   int getNum() { return num; }
 
   void setNum(int n) { num = n; }
 };
 
+// Intentionally make this not a standard-layout class and let ScriptClass be the latter one
+// actually  BaseClassScriptWrapper* and ScriptClass* will be different memory address
 class BaseClassScriptWrapper : public BaseClass, public ScriptClass {
  public:
-  explicit BaseClassScriptWrapper(const Local<Object>& thiz) : BaseClass(), ScriptClass(thiz) {}
+  // used to check callback used the right pointer
+  void* ctorCalledInstancePtr_ = nullptr;
+  void* nameCalledInstancePtr_ = nullptr;
+
+  explicit BaseClassScriptWrapper(const Local<Object>& thiz) : BaseClass(), ScriptClass(thiz) {
+    ctorCalledInstancePtr_ = this;
+  }
+
+  std::string name() override {
+    nameCalledInstancePtr_ = this;
+    return "BaseWrapper";
+  }
 };
 
 const auto baseWrapperDefine =
@@ -765,6 +780,8 @@ TEST_F(NativeTest, BindBaseClass) {
     engine->registerNativeClass(baseWrapperDefine);
     auto base = engine->newNativeClass<BaseClassScriptWrapper>();
     auto ptr = engine->getNativeInstance<BaseClassScriptWrapper>(base);
+    ASSERT_EQ(ptr, ptr->ctorCalledInstancePtr_);
+
     engine->set("base", base);
 
     engine->eval("base.age = 10");
@@ -790,9 +807,19 @@ TEST_F(NativeTest, BindBaseClass) {
     .select());
     ASSERT_TRUE(num.isNumber());
     EXPECT_EQ(ptr->getNum(), num.asNumber().toInt32());
+
+    EXPECT_EQ(ptr->nameCalledInstancePtr_, nullptr);
+    engine->eval(TS().js("base.name()").lua("return base:name()").select());  // invoke getter func
+    EXPECT_EQ(ptr->nameCalledInstancePtr_, ptr);
+
   } catch (const Exception& e) {
     FAIL() << e;
   }
+}
+
+TEST_F(NativeTest, NewNativeClassWhitoutRegister) {
+  EngineScope engineScope(engine);
+  EXPECT_THROW({ engine->newNativeClass<BaseClassScriptWrapper>(); }, Exception);
 }
 
 namespace {
