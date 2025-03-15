@@ -47,8 +47,25 @@ ScriptClass::ScriptClass(const Local<Object>& scriptObject) : internalState_() {
   internalState_.weakRef_ = scriptObject;
 }
 
-Local<Object> ScriptClass::getScriptObject() const { 
-  return internalState_.weakRef_.get(); 
+void ScriptClass::performConstructFromCpp(internal::TypeIndex typeIndex,
+                                          const internal::ClassDefineState *classDefine) {
+  auto engine = py_backend::currentEngineChecked();
+  internalState_.scriptEngine_ = engine;
+
+  // pass "this" through into tp_init by wrapped in a capsule
+  PyCapsule_Destructor destructor = [](PyObject *cap) {};
+  PyObject *capsule =
+          PyCapsule_New(this, nullptr, destructor);
+
+  std::initializer_list<Local<Value>> args{py_interop::asLocal<Value>(capsule)};
+  auto ref = engine->performNewNativeClass(typeIndex, classDefine, args.size(), args.begin());
+  internalState_.weakRef_ = ref;
+
+  py_backend::extendLifeTimeToNextLoop(engine, py_interop::getPy(ref.asValue()));
+}
+
+Local<Object> ScriptClass::getScriptObject() const {
+  return internalState_.weakRef_.get();
 }
 
 Local<Array> ScriptClass::getInternalStore() const {
