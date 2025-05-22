@@ -291,6 +291,11 @@ std::vector<Local<String>> Local<Object>::getKeys() const {
     if (value->IsString()) {
       ret.push_back(
           v8_backend::V8Engine::make<Local<String>>(scope.Escape(value.As<v8::String>())));
+    } else if (value->IsNumber()) {
+      auto maybeString = value->ToString(context);
+      v8_backend::checkException(tryCatch);
+      ret.push_back(
+          v8_backend::V8Engine::make<Local<String>>(scope.Escape(maybeString.ToLocalChecked())));
     }
   }
 
