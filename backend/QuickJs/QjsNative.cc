@@ -67,7 +67,7 @@ Local<Array> ScriptClass::getInternalStore() const {
     auto obj = internalState_.weakRef_;
     auto store = JS_GetProperty(context, obj, symbol);
     qjs_backend::checkException(store);
-    if (!JS_IsArray(context, store)) {
+    if (!JS_IsArray(store)) {
       JS_FreeValue(context, store);
       store = JS_NewArray(context);
       qjs_backend::checkException(store);
