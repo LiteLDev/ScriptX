@@ -6,7 +6,7 @@ if is_config("backend", "Lua") then
     add_requires("lua v5.4.7", {configs={shared=true}})
 
 elseif is_config("backend", "QuickJs") then
-    add_requires("quickjs-ng v0.8.0", {configs={shared=true, libc=true}})
+    add_requires("quickjs-ng v0.11.0", {configs={shared=true, libc=true}})
 
 elseif is_config("backend", "Python") then
     add_requires("python 3.12.8", {configs={shared=true}})
