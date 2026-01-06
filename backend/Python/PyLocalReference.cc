@@ -34,24 +34,23 @@ void valueConstructorCheck(PyObject* value) {
 }
 }  // namespace py_backend
 
-#define REF_IMPL_BASIC_FUNC(ValueType)                                                  \
-  Local<ValueType>::Local(const Local<ValueType>& copy) : val_(Py_NewRef(copy.val_)) {} \
-  Local<ValueType>::Local(Local<ValueType>&& move) noexcept : val_(std::move(move.val_)) \
-  {                                                                                     \
-    move.val_ = Py_NewRef(Py_None);                                                     \
-  }                                                                                     \
-  Local<ValueType>::~Local() { Py_XDECREF(val_); }                                      \
-  Local<ValueType>& Local<ValueType>::operator=(const Local& from) {                    \
-    Py_XDECREF(val_);                                                                   \
-    val_ = Py_NewRef(from.val_);                                                        \
-    return *this;                                                                       \
-  }                                                                                     \
-  Local<ValueType>& Local<ValueType>::operator=(Local&& move) noexcept {                \
-    Py_XDECREF(val_);                                                                   \
-    val_ = move.val_;                                                                   \
-    move.val_ = Py_NewRef(Py_None);                                                     \
-    return *this;                                                                       \
-  }                                                                                     \
+#define REF_IMPL_BASIC_FUNC(ValueType)                                                     \
+  Local<ValueType>::Local(const Local<ValueType>& copy) : val_(Py_NewRef(copy.val_)) {}    \
+  Local<ValueType>::Local(Local<ValueType>&& move) noexcept : val_(std::move(move.val_)) { \
+    move.val_ = Py_NewRef(Py_None);                                                        \
+  }                                                                                        \
+  Local<ValueType>::~Local() { Py_XDECREF(val_); }                                         \
+  Local<ValueType>& Local<ValueType>::operator=(const Local& from) {                       \
+    Py_XDECREF(val_);                                                                      \
+    val_ = Py_NewRef(from.val_);                                                           \
+    return *this;                                                                          \
+  }                                                                                        \
+  Local<ValueType>& Local<ValueType>::operator=(Local&& move) noexcept {                   \
+    Py_XDECREF(val_);                                                                      \
+    val_ = move.val_;                                                                      \
+    move.val_ = Py_NewRef(Py_None);                                                        \
+    return *this;                                                                          \
+  }                                                                                        \
   void Local<ValueType>::swap(Local& rhs) noexcept { std::swap(val_, rhs.val_); }
 
 #define REF_IMPL_BASIC_EQUALS(ValueType)                                               \
@@ -160,7 +159,9 @@ bool Local<Value>::isFunction() const {
 
 bool Local<Value>::isArray() const { return PyList_CheckExact(val_); }
 
-bool Local<Value>::isByteBuffer() const { return PyByteArray_CheckExact(val_); }
+bool Local<Value>::isByteBuffer() const {
+  return PyByteArray_CheckExact(val_) || PyBytes_CheckExact(val_);
+}
 
 // Object can be dict or class or any instance, bad design!
 bool Local<Value>::isObject() const {
@@ -220,20 +221,20 @@ Local<String> Local<Value>::describe() const {
 
 Local<Value> Local<Object>::get(const script::Local<script::String>& key) const {
   if (PyDict_CheckExact(val_)) {
-    PyObject* item = py_backend::getDictItem(val_, key.val_);   // return a borrowed ref
+    PyObject* item = py_backend::getDictItem(val_, key.val_);  // return a borrowed ref
     if (item)
       return py_interop::toLocal<Value>(item);
     else
       return Local<Value>();
   } else {
-    PyObject* ref = py_backend::getAttr(val_, key.val_);    // warn: return a new ref!
+    PyObject* ref = py_backend::getAttr(val_, key.val_);  // warn: return a new ref!
     return py_interop::asLocal<Value>(ref);
   }
 }
 
 void Local<Object>::set(const script::Local<script::String>& key,
                         const script::Local<script::Value>& value) const {
-  py_backend::setDictItem(val_, key.val_, value.val_);      // set setDictItem auto +1 ref to value
+  py_backend::setDictItem(val_, key.val_, value.val_);  // set setDictItem auto +1 ref to value
 }
 
 void Local<Object>::remove(const Local<class script::String>& key) const {
@@ -246,12 +247,11 @@ bool Local<Object>::has(const Local<class script::String>& key) const {
 
 bool Local<Object>::instanceOf(const Local<class script::Value>& type) const {
   bool ret;
-  if(PyType_Check(type.val_))
+  if (PyType_Check(type.val_))
     ret = PyObject_IsInstance(val_, type.val_);
   else
     ret = PyObject_IsInstance(val_, (PyObject*)Py_TYPE(type.val_));
-  if (py_backend::checkAndClearException())
-    return false;
+  if (py_backend::checkAndClearException()) return false;
   return ret;
 }
 
@@ -260,7 +260,7 @@ std::vector<Local<String>> Local<Object>::getKeys() const {
   PyObject* key;
   PyObject* value;
   Py_ssize_t pos = 0;
-  while (PyDict_Next(val_, &pos, &key, &value)) {       // return borrowed refs
+  while (PyDict_Next(val_, &pos, &key, &value)) {  // return borrowed refs
     keys.push_back(py_interop::toLocal<String>(key));
   }
   return keys;
@@ -279,14 +279,14 @@ bool Local<Boolean>::value() const { return Py_IsTrue(val_); }
 Local<Value> Local<Function>::callImpl(const Local<Value>& thiz, size_t size,
                                        const Local<Value>* args) const {
   // - Attention! Python does not support thiz rediction, Param "thiz" is ignored.
-  // - If this function is a class method, thiz is locked to 
+  // - If this function is a class method, thiz is locked to
   //   the owner object instance of this method.
   // - If this function is a common function or a static method,
   //   thiz is locked to "None"
   PyObject* args_tuple = PyTuple_New(size);
 
   for (size_t i = 0; i < size; ++i) {
-    Py_INCREF(args[i].val_);         // PyTuple_SetItem will steal the ref
+    Py_INCREF(args[i].val_);  // PyTuple_SetItem will steal the ref
     PyTuple_SetItem(args_tuple, i, args[i].val_);
   }
   PyObject* result = PyObject_CallObject(val_, args_tuple);
@@ -298,7 +298,7 @@ Local<Value> Local<Function>::callImpl(const Local<Value>& thiz, size_t size,
 size_t Local<Array>::size() const { return PyList_Size(val_); }
 
 Local<Value> Local<Array>::get(size_t index) const {
-  PyObject* item = PyList_GetItem(val_, index);       // return a borrowed ref
+  PyObject* item = PyList_GetItem(val_, index);  // return a borrowed ref
   if (item)
     return py_interop::toLocal<Value>(item);
   else
@@ -309,15 +309,15 @@ void Local<Array>::set(size_t index, const script::Local<script::Value>& value) 
   size_t listSize = size();
   if (index >= listSize) {
     for (size_t i = listSize; i <= index; ++i) {
-      PyList_Append(val_, Py_None);   // No need to add ref to Py_None
+      PyList_Append(val_, Py_None);  // No need to add ref to Py_None
     }
   }
-  Py_INCREF(value.val_);         // PyList_SetItem will steal ref
+  Py_INCREF(value.val_);  // PyList_SetItem will steal ref
   PyList_SetItem(val_, index, value.val_);
 }
 
 void Local<Array>::add(const script::Local<script::Value>& value) const {
-  PyList_Append(val_, value.val_);    // not steal ref
+  PyList_Append(val_, value.val_);  // not steal ref
 }
 
 void Local<Array>::clear() const { PyList_SetSlice(val_, 0, PyList_Size(val_), nullptr); }
@@ -330,12 +330,22 @@ void Local<ByteBuffer>::commit() const {}
 
 void Local<ByteBuffer>::sync() const {}
 
-size_t Local<ByteBuffer>::byteLength() const { return PyByteArray_Size(val_); }
+size_t Local<ByteBuffer>::byteLength() const {
+  if (PyByteArray_CheckExact(val_))
+    return PyByteArray_Size(val_);
+  else
+    return PyBytes_Size(val_);
+}
 
-void* Local<ByteBuffer>::getRawBytes() const { return PyByteArray_AsString(val_); }
+void* Local<ByteBuffer>::getRawBytes() const {
+  if (PyByteArray_CheckExact(val_))
+    return PyByteArray_AsString(val_);
+  else
+    return PyBytes_AsString(val_);
+}
 
 std::shared_ptr<void> Local<ByteBuffer>::getRawBytesShared() const {
-   return std::shared_ptr<void>(getRawBytes(), [global = Global<ByteBuffer>(*this)](void* ptr) {}); 
+  return std::shared_ptr<void>(getRawBytes(), [global = Global<ByteBuffer>(*this)](void* ptr) {});
 }
 
 }  // namespace script
