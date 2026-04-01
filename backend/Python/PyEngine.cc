@@ -114,6 +114,15 @@ namespace script::py_backend {
         PyInterpreterState *interp = tstate->interp;
         PyThreadState *oldThreadState = PyThreadState_Swap(tstate);
 
+        // release engine-local Python objects before interpreter teardown
+        for (auto &[_, type] : registeredTypes_) {
+            Py_DECREF(type);
+        }
+        registeredTypes_.clear();
+        registeredTypesReverse_.clear();
+        Py_XDECREF(scriptxExceptionTypeObj);
+        scriptxExceptionTypeObj = nullptr;
+
         // Set finalizing sign
         SetPyInterpreterStateFinalizing(interp);
 

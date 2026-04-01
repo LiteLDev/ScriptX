@@ -518,14 +518,14 @@ namespace script {
         }
 
         PyObject *makeEmptyPyFunction() {
-            PyMethodDef *method = new PyMethodDef;
-            method->ml_name = "scriptx_function";
-            method->ml_flags = METH_VARARGS;
-            method->ml_doc = nullptr;
-            method->ml_meth = [](PyObject *self, PyObject *args) -> PyObject * {
-                Py_RETURN_NONE;
-            };
-            PyObject *function = PyCFunction_New(method, Py_None);
+            static PyMethodDef method = {
+                    "scriptx_function",
+                    [](PyObject *self, PyObject *args) -> PyObject * {
+                        Py_RETURN_NONE;
+                    },
+                    METH_VARARGS,
+                    nullptr};
+            PyObject *function = PyCFunction_New(&method, Py_None);
             py_backend::checkAndThrowException();
             return function;
         }
