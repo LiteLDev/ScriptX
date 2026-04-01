@@ -97,7 +97,7 @@ QjsEngine::QjsEngine(std::shared_ptr<utils::MessageQueue> queue, const QjsFactor
   initEngineResource();
 
   /* set default loader for ES6 modules */
-  JS_SetModuleLoaderFunc(runtime_, NULL, js_module_loader, NULL);
+  JS_SetModuleLoaderFunc2(runtime_, NULL, js_module_loader, js_module_check_attributes, NULL);
 }
 
 void QjsEngine::initEngineResource() {
