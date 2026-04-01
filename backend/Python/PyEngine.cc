@@ -345,7 +345,10 @@ namespace script::py_backend {
             g->weakrefs = nullptr;
             g->instanceDict = nullptr;
             g->ownedByPython = true;
-            PyObject_GC_Track(self);
+            // In Python >=3.12 some allocators may already track GC objects, guard to avoid double-track assert
+            if (!PyObject_GC_IsTracked(self)) {
+                PyObject_GC_Track(self);
+            }
             return self;
         };
 
@@ -398,7 +401,9 @@ namespace script::py_backend {
         };
 
         type->tp_dealloc = [](PyObject *self) {
-            PyObject_GC_UnTrack(self);
+            if (PyObject_GC_IsTracked(self)) {
+                PyObject_GC_UnTrack(self);
+            }
             auto type = Py_TYPE(self);
             auto *g = reinterpret_cast<GeneralObject *>(self);
 
