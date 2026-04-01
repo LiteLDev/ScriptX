@@ -19,6 +19,8 @@
 
 #include <stack>
 #include <string>
+#include <unordered_map>
+#include <memory>
 #include "../../src/Engine.h"
 #include "../../src/Exception.h"
 #include "../../src/utils/Helper.hpp"
@@ -34,6 +36,8 @@ namespace script::py_backend {
 
         std::unordered_map<const void *, PyTypeObject *> registeredTypes_;
         std::unordered_map<PyTypeObject *, const void *> registeredTypesReverse_;
+        std::unordered_map<PyTypeObject *, std::shared_ptr<std::string>> registeredTypeNames_;
+        std::unordered_map<PyTypeObject *, script::ScriptClass *(*)(void *)> instanceCasters_;
 
         bool destroying = false;
 

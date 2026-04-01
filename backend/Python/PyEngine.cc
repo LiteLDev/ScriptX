@@ -120,6 +120,8 @@ namespace script::py_backend {
         }
         registeredTypes_.clear();
         registeredTypesReverse_.clear();
+        registeredTypeNames_.clear();
+        instanceCasters_.clear();
         Py_XDECREF(scriptxExceptionTypeObj);
         scriptxExceptionTypeObj = nullptr;
 
@@ -180,26 +182,26 @@ namespace script::py_backend {
 //      like assignments (a=3) or definitions (def func():xxx) are not supported.
 //   2. "Py_file_input" can execute any type and any length of Python code, but it returns nothing!
 //      It means that the return value will always be None, no matter what you actually eval.
-//   3. "Py_single_input" cannot be used here. It is used for CPython interactive console and will print 
+//   3. "Py_single_input" cannot be used here. It is used for CPython interactive console and will print
 //      anything returned directly to console.
 // - Because of the deliberate design of CPython, we can only use some rule to "guess" which mode is the
-//   most suitable, and try our best to get the return value while ensuring that the code can be executed 
+//   most suitable, and try our best to get the return value while ensuring that the code can be executed
 //   properly.
 // - Logic we use below in eval:
 //   1. Firstly, we check that if the code contains something like "\n" (multi-line) or " = " (assignments).
 //     If found, we can only execute this code in "Py_file_input" mode, and returns None.
-//   2. Secondly, we try to eval the code in "Py_eval_input" mode. It may fail. If eval succeeds, we can 
+//   2. Secondly, we try to eval the code in "Py_eval_input" mode. It may fail. If eval succeeds, we can
 //     get return value and return directly.
-//   3. If eval in "Py_eval_input" mode fails (get exception), and get a SyntaxError, we can reasonably  
+//   3. If eval in "Py_eval_input" mode fails (get exception), and get a SyntaxError, we can reasonably
 //     guess that the cause of this exception is that the code is not a conforming expression. So we clear
 //     this exception and try to eval it in "Py_file_input" mode again. (Goto 5)
-//     (When we get a SyntexError, the code have not been actually executed, and will not have any 
+//     (When we get a SyntexError, the code have not been actually executed, and will not have any
 //     side-effect. So re-eval is ok)
-//   4. If we got an exception but it is not a SyntaxError, we must throw it out because the problems is 
+//   4. If we got an exception but it is not a SyntaxError, we must throw it out because the problems is
 //     not related to "Py_eval_input" mode.
 //   5. If eval in "Py_file_input" mode succeeds, just return None directly. If the eval still fails, we
 //     throw out the exception got here.
-// - See more docs at docs/en/Python.md. There is still room for improvement in this logic. 
+// - See more docs at docs/en/Python.md. There is still room for improvement in this logic.
 //
     Local<Value> PyEngine::eval(const Local<String> &script, const Local<Value> &sourceFile) {
         Tracer tracer(this, "PyEngine::eval");
@@ -294,22 +296,37 @@ namespace script::py_backend {
             internal::TypeIndex typeIndex, const internal::ClassDefineState* classDefine,
             script::ScriptClass* (*instanceTypeToScriptClass)(void*)) {
         auto name_obj = toStr(classDefine->className.c_str());
+        auto typeNameStorage = std::make_shared<std::string>(classDefine->className);
 
-        auto *heap_type = (PyHeapTypeObject *) PyType_GenericAlloc(PyEngine::defaultMetaType_, 0);
-        if (!heap_type) {
-            Py_FatalError("error allocating type!");
-        }
+         auto *heap_type = (PyHeapTypeObject *) PyType_GenericAlloc(PyEngine::defaultMetaType_, 0);
+         if (!heap_type) {
+             Py_FatalError("error allocating type!");
+         }
 
-        heap_type->ht_name = Py_NewRef(name_obj);
-        heap_type->ht_qualname = Py_NewRef(name_obj);
-        Py_DECREF(name_obj);
+         heap_type->ht_name = Py_NewRef(name_obj);
+         heap_type->ht_qualname = Py_NewRef(name_obj);
+         Py_DECREF(name_obj);
 
-        auto *type = &heap_type->ht_type;
-        type->tp_name = classDefine->className.c_str();
-        Py_INCREF(&PyBaseObject_Type);
-        type->tp_base = &PyBaseObject_Type;
-        type->tp_basicsize = static_cast<Py_ssize_t>(sizeof(GeneralObject));
-        type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE;
+         auto *type = &heap_type->ht_type;
+         type->tp_name = typeNameStorage->c_str();
+         Py_INCREF(&PyBaseObject_Type);
+         type->tp_base = &PyBaseObject_Type;
+         type->tp_basicsize = static_cast<Py_ssize_t>(sizeof(GeneralObject));
+         type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_HAVE_GC;
+         type->tp_traverse = [](PyObject *self, visitproc visit, void *arg) {
+            auto *g = reinterpret_cast<GeneralObject *>(self);
+            Py_VISIT(g->instanceDict);
+            Py_VISIT(g->weakrefs);
+            return 0;
+        };
+        type->tp_clear = [](PyObject *self) {
+            auto *g = reinterpret_cast<GeneralObject *>(self);
+            Py_CLEAR(g->instanceDict);
+            Py_CLEAR(g->weakrefs);
+            return 0;
+        };
+        type->tp_free = PyObject_GC_Del;
+        type->tp_alloc = PyType_GenericAlloc;
 
         // enable object dict
         type->tp_dictoffset = SCRIPTX_OFFSET_OF(GeneralObject, instanceDict);
@@ -319,15 +336,29 @@ namespace script::py_backend {
 
         type->tp_new = [](PyTypeObject *type, PyObject *args, PyObject *kwds) -> PyObject * {
             PyObject *self = type->tp_alloc(type, 0);
+            if (!self) return nullptr;
+            auto *g = reinterpret_cast<GeneralObject *>(self);
+            g->instance = nullptr;
+            g->scriptClassPtr = nullptr;
+            g->instanceCaster = nullptr;
+            g->classDefine = nullptr;
+            g->weakrefs = nullptr;
+            g->instanceDict = nullptr;
+            g->ownedByPython = true;
+            PyObject_GC_Track(self);
             return self;
         };
+
         type->tp_init = [](PyObject *self, PyObject *args, PyObject *kwds) -> int {
             auto engine = currentEngine();
             auto classDefine =
                     reinterpret_cast<const internal::ClassDefineState *>(engine->registeredTypesReverse_[self->ob_type]);
+            auto *g = reinterpret_cast<GeneralObject *>(self);
+            g->classDefine = classDefine;
+            g->instanceCaster = engine->instanceCasters_[self->ob_type];
             if (classDefine->instanceDefine.constructor) {
                 Tracer tracer(engine, classDefine->className);
-                GeneralObject *cppSelf = reinterpret_cast<GeneralObject *>(self);
+                auto *cppSelf = reinterpret_cast<GeneralObject *>(self);
 
                 if (!PyTuple_Check(args)) {
                     throw Exception(std::string("Can't create class ") + Py_TYPE(self)->tp_name);
@@ -340,8 +371,9 @@ namespace script::py_backend {
                         // Passed a cpp this in capsule
                         // Logic for ScriptClass(const ScriptClass::ConstructFromCpp<T>)
                         cppSelf->instance = (void *) PyCapsule_GetPointer(maybeCapsule, nullptr);
-                    }
-                }
+                        cppSelf->ownedByPython = false;
+                     }
+                 }
 
                 if (cppSelf->instance == nullptr) {
                     // Python-side constructor
@@ -353,6 +385,10 @@ namespace script::py_backend {
                         return -1;
                     }
                 }
+
+                if (cppSelf->ownedByPython && cppSelf->instanceCaster) {
+                    cppSelf->scriptClassPtr = cppSelf->instanceCaster(cppSelf->instance);
+                }
             } else {
                 // Will never reach here. If pass nullptr to constructor(), ScriptX will make
                 // constructor to be a function that always returns nullptr.
@@ -360,9 +396,28 @@ namespace script::py_backend {
             }
             return 0;
         };
+
         type->tp_dealloc = [](PyObject *self) {
+            PyObject_GC_UnTrack(self);
             auto type = Py_TYPE(self);
-            delete (internal::ClassDefineState* *) (reinterpret_cast<GeneralObject *>(self)->instance);
+            auto *g = reinterpret_cast<GeneralObject *>(self);
+
+            if (g->ownedByPython && g->instance) {
+                if (g->scriptClassPtr) {
+                    delete g->scriptClassPtr;
+                } else if (g->instanceCaster) {
+                    if (auto *sc = g->instanceCaster(g->instance)) {
+                        delete sc;
+                    } else {
+                        delete reinterpret_cast<char *>(g->instance);
+                    }
+                }
+                g->scriptClassPtr = nullptr;
+                g->instanceCaster = nullptr;
+                g->instance = nullptr;
+            }
+
+            PyObject_ClearWeakRefs(self);
             type->tp_free(self);
             Py_DECREF(type);
         };
@@ -379,8 +434,10 @@ namespace script::py_backend {
         this->registerInstanceFunction(classDefine, (PyObject *) type);
         this->registeredTypes_.emplace(classDefine, type);
         this->registeredTypesReverse_.emplace(type, classDefine);
+        this->registeredTypeNames_.emplace(type, std::move(typeNameStorage));
+        this->instanceCasters_.emplace(type, instanceTypeToScriptClass);
         this->nameSpaceSet(classDefine, classDefine->className.c_str(), (PyObject *) type);
-    };
+     };
 
     void* PyEngine::performGetNativeInstance(const Local<script::Value>& value,
                                    const internal::ClassDefineState* classDefine) {

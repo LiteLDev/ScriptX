@@ -39,15 +39,23 @@ SCRIPTX_END_INCLUDE_LIBRARY
 #error "python version must be greater than 3.10.0"
 #endif
 
+namespace script {
+    class ScriptClass;
+}
+
 namespace script::py_backend {
 
     struct GeneralObject : PyObject {
         void *instance;
+        ScriptClass *scriptClassPtr;
+        ScriptClass *(*instanceCaster)(void *);
+        const void *classDefine;
         PyObject *weakrefs;
         PyObject *instanceDict;
+        bool ownedByPython;
 
-        static internal::ClassDefineState *getInstance(PyObject *self) {
-            return reinterpret_cast<internal::ClassDefineState *>(reinterpret_cast<GeneralObject *>(self)->instance);
+        static void *getInstance(PyObject *self) {
+            return reinterpret_cast<GeneralObject *>(self)->instance;
         }
     };
 
