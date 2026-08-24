@@ -54,6 +54,7 @@ V8Engine::V8Engine(std::shared_ptr<utils::MessageQueue> messageQueue, v8::Isolat
       messageQueue_(messageQueue ? std::move(messageQueue)
                                  : std::make_shared<utils::MessageQueue>()),
       isolate_(isolate) {
+  isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
   context_ = v8::Global<v8::Context>(isolate, context);
   initContext();
 

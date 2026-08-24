@@ -269,18 +269,7 @@ Local<Value> LuaEngine::loadFile(const Local<String>& scriptFile) {
   if(content.isNull())
     throw Exception("can't load script file");
 
-  std::string sourceFilePath = scriptFile.toString();
-  std::size_t pathSymbol = sourceFilePath.rfind("/");
-  if(pathSymbol != std::string::npos)
-    sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
-  else
-  {
-    pathSymbol = sourceFilePath.rfind("\\");
-    if(pathSymbol != std::string::npos)
-      sourceFilePath = sourceFilePath.substr(pathSymbol + 1);
-  }
-  Local<String> sourceFileName = String::newString(sourceFilePath);
-  return eval(content.asString(), sourceFileName);
+  return eval(content.asString(), scriptFile);
 }
 
 Arguments LuaEngine::makeArguments(LuaEngine* engine, int stackBase, size_t paramCount,
